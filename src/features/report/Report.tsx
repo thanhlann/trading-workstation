@@ -913,7 +913,21 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                       <section className="report-trade-drawer__section" aria-labelledby="trade-overview-title">
                         <h5 id="trade-overview-title">Trade Overview</h5>
                         <dl className="report-trade-drawer__overview">
-                          <div><dt>Trade ID</dt><dd>TRD-{String(selectedTrade.number).padStart(6, '0')}</dd></div>
+                          <div>
+                            <dt>Trade ID</dt>
+                            <dd>
+                              <button
+                                type="button"
+                                className="report-trade-drawer__trade-link"
+                                aria-label={`Open chart for trade ${selectedTrade.number}`}
+                                title="Open Trade Chart"
+                                onClick={() => openTradeChart(selectedTrade)}
+                              >
+                                TRD-{String(selectedTrade.number).padStart(6, '0')}
+                                <ChartCandlestick size={11} aria-hidden="true" />
+                              </button>
+                            </dd>
+                          </div>
                           <div><dt>Setup ID</dt><dd>STP-{String(selectedTrade.setup.number).padStart(6, '0')}</dd></div>
                           <div>
                             <dt>Direction</dt>

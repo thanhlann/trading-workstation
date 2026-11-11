@@ -432,6 +432,9 @@ button { cursor: pointer; }
 .report-trade-drawer__overview > div, .report-trade-drawer__performance > div { display: grid; min-width: 0; gap: 4px; }
 .report-trade-drawer__overview dt, .report-trade-drawer__performance dt { color: #aab9cb; font-size: 9px; }
 .report-trade-drawer__overview dd, .report-trade-drawer__performance dd { overflow-wrap: anywhere; color: #dce6f3; font-size: 10px; font-weight: 600; }
+.report-trade-drawer__trade-link { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; border: 1px solid #365677; border-radius: 4px; color: #9cc8ff; background: #20334a; font: inherit; cursor: pointer; }
+.report-trade-drawer__trade-link:hover { border-color: #83b5ff; color: #fff; background: #294565; }
+.report-trade-drawer__trade-link:focus-visible { outline: 2px solid #83b5ff; outline-offset: 2px; }
 .report-trade-drawer__execution { width: 100%; border-collapse: collapse; font-size: 9px; }
 .report-trade-drawer__execution th, .report-trade-drawer__execution td { padding: 7px 0; border-bottom: 1px solid #1d2c40; text-align: left; }
 .report-trade-drawer__execution th { color: #aab9cb; font-weight: 600; }
