@@ -16,6 +16,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts';
 import type { MarketSymbol } from '../../config/marketSymbols';
+import { SYSTEM_CONFIG } from '../../config/system';
 import { setChartData } from './chartData';
 import type { Candle, CandleData, CandleTooltipData } from './candle.types';
 import type { MarketStateOverlay, TradeChartOverlay } from './marketState.types';
@@ -84,6 +85,8 @@ function getTradeVisibleRange(
     Number(trade.htf.marketStructure.time),
     Number(trade.ltf.marketStructure.eventPrice.time),
     Number(trade.ltf.marketStructure.time),
+    Number(trade.trade.entry.time),
+    Number(trade.trade.exit.time),
     ...(trade.htf.poi ? [Number(trade.htf.poi.startTime)] : []),
     ...(trade.ltf.poi ? [Number(trade.ltf.poi.startTime)] : []),
     ...(trade.ltf.sweep ? [Number(trade.ltf.sweep.time)] : []),
@@ -247,6 +250,7 @@ export function ChartPanel({
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const marketStructureRef = useRef<ISeriesApi<'Line'> | null>(null);
   const additionalMarketStructureRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const stopLossRef = useRef<ISeriesApi<'Line'> | null>(null);
   const poiSeriesRef = useRef<ISeriesApi<'Baseline'>[]>([]);
   const marketStateRangeRef = useRef<{ from: Time; to: Time } | null>(null);
   const hasTradeRangeRef = useRef(false);
@@ -314,6 +318,14 @@ export function ChartPanel({
       lastValueVisible: false,
       crosshairMarkerVisible: false,
     });
+    stopLossRef.current = chart.addSeries(LineSeries, {
+      color: '#ef626c',
+      lineStyle: LineStyle.Dashed,
+      lineWidth: 1,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
     marketStructureRef.current = marketStructure;
     additionalMarketStructureRef.current = chart.addSeries(LineSeries, {
       color: '#ef626c',
@@ -374,6 +386,7 @@ export function ChartPanel({
       poiSeriesRef.current = [];
       marketStructureRef.current = null;
       additionalMarketStructureRef.current = null;
+      stopLossRef.current = null;
       marketStateRangeRef.current = null;
       chart.unsubscribeClick(onChartClick);
       chart.remove();
@@ -381,6 +394,22 @@ export function ChartPanel({
       candlesRef.current = null;
     };
   }, []);
+
+  useEffect(() => {
+    const stopLoss = stopLossRef.current;
+    if (!stopLoss) return;
+
+    const entry = tradeOverlay?.trade.entry;
+    const exit = tradeOverlay?.trade.exit;
+    stopLoss.setData(
+      entry && exit && Number(exit.time) > Number(entry.time)
+        ? [
+          { time: entry.time, value: exit.stopLoss },
+          { time: exit.time, value: exit.stopLoss },
+        ]
+        : [],
+    );
+  }, [tradeOverlay]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -748,6 +777,19 @@ export function ChartPanel({
           color: tradeOverlay.trade.exit.type === 'TP' ? '#20b887' : '#ef626c',
           text: tradeOverlay.trade.exit.type,
           size: 1,
+        },
+        {
+          time: getMarketStateLabelTime(
+            candlesData,
+            tradeOverlay.trade.entry.time,
+            tradeOverlay.trade.exit.time,
+          ),
+          position: 'atPriceMiddle',
+          price: tradeOverlay.trade.exit.stopLoss,
+          shape: 'circle',
+          color: '#ef626c',
+          text: SYSTEM_CONFIG.ui.backtestReplay.stopLossLabel,
+          size: 0,
         },
         ...(tradeOverlay.ltf.sweep
           ? [{
