@@ -196,8 +196,13 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
   useEffect(() => {
     if (navigationTarget === null || timeframeMode !== 'ltf' || !dataLoaded) return;
 
-    if (navigationTarget.type === 'trade' && !tradeFilterActive) {
+    setDataError(null);
+    if (
+      navigationTarget.type === 'trade'
+      && (!tradeFilterActive || tradeSetupFilterId !== navigationTarget.setupId)
+    ) {
       setTradeFilterActive(true);
+      setTradeSetupFilterId(navigationTarget.setupId);
       return;
     }
     if (navigationTarget.type === 'marketStructure' && tradeFilterActive) {
@@ -211,7 +216,11 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     }
 
     const targetIndex = navigationTarget.type === 'trade'
-      ? matchedTradeEntries.findIndex(({ trade }) => trade.number === navigationTarget.tradeNumber)
+      ? matchedTradeEntries.findIndex(({ trade }) => (
+        trade.number === navigationTarget.tradeNumber
+        && trade.setup.id === navigationTarget.setupId
+        && trade.ltf.marketStructure.time === navigationTarget.marketStructureTime
+      ))
       : visibleMarketStates.findIndex((state) => (
         Number(state.marketStructure.time) === navigationTarget.marketStructureTime
         && state.marketStructure.number === navigationTarget.marketStructureNumber
@@ -237,6 +246,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     setTradeFilterActive,
     tradeFilterActive,
     setTradeSetupFilterId,
+    tradeSetupFilterId,
     timeframeMode,
     matchedTradeEntries,
     visibleMarketStates,
