@@ -400,6 +400,8 @@ export function ChartPanel({
     }
 
     const structure = marketState?.marketStructure ?? tradeOverlay?.htf.marketStructure;
+    const additionalStructure = additionalMarketState?.marketStructure
+      ?? tradeOverlay?.ltf.marketStructure;
     const rangeMarketState = focusAdditionalMarketState
       ? additionalMarketState ?? marketState
       : marketState;
@@ -422,21 +424,20 @@ export function ChartPanel({
       ]);
     }
 
-    if (additionalMarketStructure && additionalMarketState) {
-      const structure = additionalMarketState.marketStructure;
+    if (additionalMarketStructure && additionalStructure) {
       additionalMarketStructure.applyOptions({
-        color: structure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
+        color: additionalStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
         lineStyle: LineStyle.Dashed,
       });
       const labelTime = getMarketStateLabelTime(
         candlesData,
-        structure.eventPrice.time,
-        structure.time,
+        additionalStructure.eventPrice.time,
+        additionalStructure.time,
       );
       additionalMarketStructure.setData([
-        { time: structure.eventPrice.time, value: structure.eventPrice.price },
-        { time: labelTime, value: structure.eventPrice.price },
-        { time: structure.time, value: structure.eventPrice.price },
+        { time: additionalStructure.eventPrice.time, value: additionalStructure.eventPrice.price },
+        { time: labelTime, value: additionalStructure.eventPrice.price },
+        { time: additionalStructure.time, value: additionalStructure.eventPrice.price },
       ]);
     }
 

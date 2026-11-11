@@ -174,15 +174,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
   const matchedTradeEntries = tradeEntries.filter(
     (entry): entry is NonNullable<(typeof tradeEntries)[number]> => entry !== undefined,
   );
-  const matchedTradeMarketStates = matchedTradeEntries.map(({ trade, ltfMarketState }) => ({
-    ...ltfMarketState,
-    marketStructure: {
-      ...ltfMarketState.marketStructure,
-      event: trade.ltf.marketStructure.event,
-      bias: trade.ltf.marketStructure.bias,
-      score: trade.ltf.marketStructure.score,
-    },
-  }));
+  const matchedTradeMarketStates = matchedTradeEntries.map(({ ltfMarketState }) => ltfMarketState);
   const tradeFilteredMarketStates = tradeFilterActive && timeframeMode === 'ltf'
     ? matchedTradeMarketStates
     : marketStates.filter((state) => (
@@ -325,14 +317,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
           poi: null,
         },
         ltf: {
-          marketStructure: {
-            number: currentTradeEntry.ltfMarketState.marketStructure.number,
-            score: currentTradeEntry.trade.ltf.marketStructure.score,
-            time: currentTradeEntry.trade.ltf.marketStructure.time as UTCTimestamp,
-            eventPrice: currentTradeEntry.ltfMarketState.marketStructure.eventPrice,
-            event: currentTradeEntry.trade.ltf.marketStructure.event,
-            bias: currentTradeEntry.trade.ltf.marketStructure.bias,
-          },
+          marketStructure: currentTradeEntry.ltfMarketState.marketStructure,
           poi: toTradeChartPoi(currentTradeEntry.trade.ltf.poi),
           sweep: currentTradeEntry.trade.ltf.sweep
             ? {
