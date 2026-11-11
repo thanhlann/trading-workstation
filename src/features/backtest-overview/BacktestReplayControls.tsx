@@ -8,11 +8,13 @@ import {
   SkipBack,
   SkipForward,
 } from 'lucide-react';
-import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { SYSTEM_CONFIG } from '../../config/system';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { parseBacktestTimeRange } from './backtestTimeRange';
 import type { BacktestTrade } from './backtestData';
+import { TradeNotes } from './TradeNotes';
+import { getTradeNoteId } from './tradeNotesStorage';
 
 const REPLAY_SPEEDS = [1, 2, 5, 10] as const;
 const PRICE_FORMAT = new Intl.NumberFormat('en-US', { maximumFractionDigits: 4 });
@@ -111,9 +113,11 @@ export function BacktestReplayControls({
 }: BacktestReplayControlsProps) {
   const [searchError, setSearchError] = useState('');
   const [setupDropdownOpen, setSetupDropdownOpen] = useState(false);
+  const [tradeDetailsExpanded, setTradeDetailsExpanded] = useState(false);
   const setupDropdownRef = useRef<HTMLDivElement>(null);
   const setupTriggerRef = useRef<HTMLButtonElement>(null);
   const setupOptionsRef = useRef<HTMLDivElement>(null);
+  const tradeDetailsContentId = useId();
   const timeframe = useWorkspaceStore((state) => state.backtestTimeframe);
   const searchValue = useWorkspaceStore((state) => (
     timeframe === 'htf' ? state.backtestHtfSearchValue : state.backtestLtfSearchValue
@@ -148,6 +152,13 @@ export function BacktestReplayControls({
     : parsedTimeRange.reason === 'reversed'
       ? SYSTEM_CONFIG.ui.backtestReplay.reversedTimeRange
       : SYSTEM_CONFIG.ui.backtestReplay.invalidTimeRange;
+  const selectedTradeNoteId = selectedTrade
+    ? getTradeNoteId(selectedTrade.symbol, selectedTrade.number, selectedTrade.time)
+    : null;
+
+  useEffect(() => {
+    setTradeDetailsExpanded(false);
+  }, [selectedTradeNoteId]);
 
   useEffect(() => {
     if (!setupDropdownOpen) return;
@@ -606,48 +617,68 @@ export function BacktestReplayControls({
               {selectedTrade && (
                 <strong>#{selectedTrade.number} · {selectedTrade.side}</strong>
               )}
+              {selectedTrade && (
+                <button
+                  type="button"
+                  className={`backtest-replay__trade-details-toggle${tradeDetailsExpanded ? ' backtest-replay__trade-details-toggle--expanded' : ''}`}
+                  aria-label={tradeDetailsExpanded
+                    ? SYSTEM_CONFIG.ui.backtestReplay.collapseTradeDetails
+                    : SYSTEM_CONFIG.ui.backtestReplay.expandTradeDetails}
+                  aria-expanded={tradeDetailsExpanded}
+                  aria-controls={tradeDetailsContentId}
+                  onClick={() => setTradeDetailsExpanded((expanded) => !expanded)}
+                >
+                  <ChevronDown size={13} aria-hidden="true" />
+                </button>
+              )}
             </div>
             {selectedTrade ? (
-              <div className="backtest-replay__trade-grid">
-                <div className="backtest-replay__trade-metric">
-                  <span>{SYSTEM_CONFIG.ui.backtestReplay.setupLabel}</span>
-                  <strong>#{selectedTrade.setup.number}</strong>
-                </div>
-                <div className="backtest-replay__trade-metric">
-                  <span>{SYSTEM_CONFIG.ui.backtestReplay.entryLabel}</span>
-                  <strong>{formatPrice(selectedTrade.entryPrice)}</strong>
-                </div>
-                <div className="backtest-replay__trade-metric">
-                  <span>{SYSTEM_CONFIG.ui.backtestReplay.stopLossLabel}</span>
-                  <strong>{formatPrice(selectedTrade.stopLoss)}</strong>
-                </div>
-                <div className="backtest-replay__trade-metric">
-                  <span>{selectedTradeExitType ?? SYSTEM_CONFIG.ui.backtestReplay.exitLabel}</span>
-                  <strong>
-                    {formatPrice(
-                      selectedTradeExitType === 'SL'
-                        ? selectedTrade.stopLoss
-                        : selectedTrade.exitPrice,
-                    )}
-                  </strong>
-                </div>
-                <div className="backtest-replay__trade-metric">
-                  <span>{SYSTEM_CONFIG.ui.backtestReplay.pnlLabel}</span>
-                  <strong className={selectedTrade.pnl < 0 ? 'negative' : 'positive'}>
-                    {formatSignedUsdt(selectedTrade.pnl)}
-                  </strong>
-                </div>
-                <div className="backtest-replay__trade-metric">
-                  <span>{SYSTEM_CONFIG.ui.backtestReplay.volumeLabel}</span>
-                  <strong>{PRICE_FORMAT.format(selectedTrade.volume)}</strong>
-                </div>
-                <div className="backtest-replay__trade-metric">
-                  <span>{SYSTEM_CONFIG.ui.backtestReplay.entryTimeLabel}</span>
-                  <strong>{formatTradeDate(selectedTrade.time, true)}</strong>
-                </div>
-                <div className="backtest-replay__trade-metric">
-                  <span>{SYSTEM_CONFIG.ui.backtestReplay.endTimeLabel}</span>
-                  <strong>{formatTradeDate(selectedTrade.endTime, true)}</strong>
+              <div
+                id={tradeDetailsContentId}
+                className="backtest-replay__trade-details-content"
+                hidden={!tradeDetailsExpanded}
+              >
+                <div className="backtest-replay__trade-grid">
+                  <div className="backtest-replay__trade-metric">
+                    <span>{SYSTEM_CONFIG.ui.backtestReplay.setupLabel}</span>
+                    <strong>#{selectedTrade.setup.number}</strong>
+                  </div>
+                  <div className="backtest-replay__trade-metric">
+                    <span>{SYSTEM_CONFIG.ui.backtestReplay.entryLabel}</span>
+                    <strong>{formatPrice(selectedTrade.entryPrice)}</strong>
+                  </div>
+                  <div className="backtest-replay__trade-metric">
+                    <span>{SYSTEM_CONFIG.ui.backtestReplay.stopLossLabel}</span>
+                    <strong>{formatPrice(selectedTrade.stopLoss)}</strong>
+                  </div>
+                  <div className="backtest-replay__trade-metric">
+                    <span>{selectedTradeExitType ?? SYSTEM_CONFIG.ui.backtestReplay.exitLabel}</span>
+                    <strong>
+                      {formatPrice(
+                        selectedTradeExitType === 'SL'
+                          ? selectedTrade.stopLoss
+                          : selectedTrade.exitPrice,
+                      )}
+                    </strong>
+                  </div>
+                  <div className="backtest-replay__trade-metric">
+                    <span>{SYSTEM_CONFIG.ui.backtestReplay.pnlLabel}</span>
+                    <strong className={selectedTrade.pnl < 0 ? 'negative' : 'positive'}>
+                      {formatSignedUsdt(selectedTrade.pnl)}
+                    </strong>
+                  </div>
+                  <div className="backtest-replay__trade-metric">
+                    <span>{SYSTEM_CONFIG.ui.backtestReplay.volumeLabel}</span>
+                    <strong>{PRICE_FORMAT.format(selectedTrade.volume)}</strong>
+                  </div>
+                  <div className="backtest-replay__trade-metric">
+                    <span>{SYSTEM_CONFIG.ui.backtestReplay.entryTimeLabel}</span>
+                    <strong>{formatTradeDate(selectedTrade.time, true)}</strong>
+                  </div>
+                  <div className="backtest-replay__trade-metric">
+                    <span>{SYSTEM_CONFIG.ui.backtestReplay.endTimeLabel}</span>
+                    <strong>{formatTradeDate(selectedTrade.endTime, true)}</strong>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -656,6 +687,12 @@ export function BacktestReplayControls({
               </p>
             )}
           </div>
+          {selectedTrade && selectedTradeNoteId && (
+            <TradeNotes
+              key={selectedTradeNoteId}
+              tradeId={selectedTradeNoteId}
+            />
+          )}
         </section>
       )}
     </section>

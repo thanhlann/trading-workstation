@@ -1,6 +1,6 @@
 import {
   CalendarDays, ChartCandlestick, ChartLine, ChevronDown, Eye, Layers, List,
-  MoreHorizontal, Search, X,
+  MoreHorizontal, NotebookPen, Search, X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { MARKET_SYMBOLS, type MarketSymbol } from '../../config/marketSymbols';
@@ -12,6 +12,8 @@ import {
   loadBacktestTrades,
 } from '../backtest-overview/backtestData';
 import type { BacktestTrade } from '../backtest-overview/backtestData';
+import { TradeNotes } from '../backtest-overview/TradeNotes';
+import { getTradeNoteId, loadTradeNoteIds } from '../backtest-overview/tradeNotesStorage';
 
 interface ReportProps {
   symbol: MarketSymbol;
@@ -131,6 +133,8 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   const [selectedTradeNumber, setSelectedTradeNumber] = useState<number | null>(null);
   const [tradeDetailsOpen, setTradeDetailsOpen] = useState(false);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
+  const [tradeNoteIds, setTradeNoteIds] = useState<Set<string> | null>(null);
+  const [tradeNotesError, setTradeNotesError] = useState<string | null>(null);
   const [tradeDataLoading, setTradeDataLoading] = useState(true);
   const [tradeDataError, setTradeDataError] = useState<string | null>(null);
   const [explorerSetups, setExplorerSetups] = useState<Awaited<ReturnType<typeof loadBacktestSetups>>>([]);
@@ -212,6 +216,36 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setTradeNoteIds(null);
+    setTradeNotesError(null);
+
+    if (trades.length === 0) {
+      setTradeNoteIds(new Set());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    loadTradeNoteIds(trades.map((trade) => (
+      getTradeNoteId(trade.symbol, trade.number, trade.time)
+    ))).then(
+      (ids) => {
+        if (!cancelled) setTradeNoteIds(ids);
+      },
+      (error: unknown) => {
+        if (!cancelled) {
+          setTradeNotesError(error instanceof Error ? error.message : String(error));
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [trades]);
 
   useEffect(() => {
     let cancelled = false;
@@ -467,6 +501,21 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
     ?? explorerTrades[0]
     ?? null;
   const selectedTradeR = selectedTrade ? getTradeR(selectedTrade) : null;
+  const selectedTradeNoteId = selectedTrade
+    ? getTradeNoteId(selectedTrade.symbol, selectedTrade.number, selectedTrade.time)
+    : null;
+  const updateTradeNotePresence = (id: string, hasNote: boolean) => {
+    setTradeNoteIds((current) => {
+      const next = new Set(current ?? []);
+      if (hasNote) {
+        next.add(id);
+      } else {
+        next.delete(id);
+      }
+      return next;
+    });
+    setTradeNotesError(null);
+  };
   const clearAll = () => {
     setDirection('All');
     setResult('All');
@@ -673,6 +722,11 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
               </button>
             ))}
           </div>
+          {tradeNotesError && (
+            <p className="report-explorer__note-error" role="alert">
+              Could not load trade note status: {tradeNotesError}
+            </p>
+          )}
 
           {tradeDataLoading ? (
             <p className="report-explorer__empty">Loading trades…</p>
@@ -690,6 +744,8 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                     {explorerTrades.map((trade) => {
                       const tradeR = getTradeR(trade);
                       const tradeResult = getTradeResult(trade);
+                      const tradeNoteId = getTradeNoteId(trade.symbol, trade.number, trade.time);
+                      const hasTradeNote = tradeNoteIds?.has(tradeNoteId) ?? false;
                       return (
                         <tr
                           className={selectedTrade?.number === trade.number ? 'report-trade-row--selected' : ''}
@@ -734,6 +790,24 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                                 if (event.key === 'Escape') setOpenActionsMenu(null);
                               }}
                             >
+                              <button
+                                type="button"
+                                className={`report-trade-note${hasTradeNote ? ' report-trade-note--active' : ''}${tradeNoteIds === null && !tradeNotesError ? ' report-trade-note--loading' : ''}`}
+                                aria-label={hasTradeNote
+                                  ? `View notes for trade ${trade.number}`
+                                  : `Add note for trade ${trade.number}`}
+                                title={hasTradeNote
+                                  ? `View notes for trade ${trade.number}`
+                                  : `Add note for trade ${trade.number}`}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedTradeNumber(trade.number);
+                                  setTradeDetailsOpen(true);
+                                  setOpenActionsMenu(null);
+                                }}
+                              >
+                                <NotebookPen size={14} aria-hidden="true" />
+                              </button>
                               <button
                                 type="button"
                                 className="report-ltf-explorer__actions-trigger"
@@ -892,6 +966,15 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                           </div>
                         </dl>
                       </section>
+                      {selectedTradeNoteId && (
+                        <TradeNotes
+                          key={selectedTradeNoteId}
+                          tradeId={selectedTradeNoteId}
+                          onHasNoteChange={(hasNote) => (
+                            updateTradeNotePresence(selectedTradeNoteId, hasNote)
+                          )}
+                        />
+                      )}
                     </div>
                   </aside>
                 )}
