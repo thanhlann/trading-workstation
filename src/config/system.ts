@@ -89,6 +89,8 @@ export const SYSTEM_CONFIG = {
       tradeDetailsTitle: "TRADE DETAILS",
       tradeNotesTitle: "TRADE NOTES",
       tradeNotesAdd: "Add Note",
+      tradeNotesSave: "Save",
+      tradeNotesClose: "Close",
       tradeNotesLoading: "Loading...",
       tradeNotesSaving: "Saving...",
       tradeNotesSaved: "Saved locally",

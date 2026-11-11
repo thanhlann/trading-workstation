@@ -1,4 +1,5 @@
 import { Plus } from 'lucide-react';
+import { createPortal } from 'react-dom';
 import { useEffect, useId, useRef, useState } from 'react';
 import { SYSTEM_CONFIG } from '../../config/system';
 import { loadTradeNote, saveTradeNote } from './tradeNotesStorage';
@@ -17,6 +18,8 @@ function getErrorMessage(error: unknown): string {
 export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
   const [note, setNote] = useState('');
   const [expanded, setExpanded] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [hasExistingNote, setHasExistingNote] = useState(false);
   const [status, setStatus] = useState<NoteStatus>('loading');
   const [errorType, setErrorType] = useState<'load' | 'save' | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
@@ -26,10 +29,10 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
   const onHasNoteChangeRef = useRef(onHasNoteChange);
   onHasNoteChangeRef.current = onHasNoteChange;
   const editorId = useId();
+  const dialogId = useId();
+  const dialogTitleId = useId();
   const labels = SYSTEM_CONFIG.ui.backtestReplay;
-  const preview = note.trim()
-    ? note.split(/\r?\n/).slice(0, 3).join('\n')
-    : '';
+  const preview = note.trim() ? note : '';
 
   useEffect(() => {
     let active = true;
@@ -43,6 +46,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
       (savedNote) => {
         if (!active) return;
         setNote(savedNote);
+        setHasExistingNote(savedNote.trim().length > 0);
         setHasLoaded(true);
         setStatus('saved');
         onHasNoteChangeRef.current?.(savedNote.trim().length > 0);
@@ -81,6 +85,37 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
     );
   };
 
+  const handleDialogSave = () => {
+    const revision = ++saveRevision.current;
+    setStatus('saving');
+    setErrorType(null);
+    setErrorMessage('');
+    saveTradeNote(tradeId, note).then(
+      () => {
+        if (revision !== saveRevision.current) return;
+        setStatus('saved');
+        setHasExistingNote(note.trim().length > 0);
+        onHasNoteChangeRef.current?.(note.trim().length > 0);
+        setDialogOpen(false);
+      },
+      (error: unknown) => {
+        if (revision !== saveRevision.current) return;
+        setStatus('error');
+        setErrorType('save');
+        setErrorMessage(getErrorMessage(error));
+      },
+    );
+  };
+
+  const handlePreviewClick = () => {
+    if (hasExistingNote && note.trim().length > 0) {
+      setDialogOpen(true);
+      return;
+    }
+
+    setExpanded((isExpanded) => !isExpanded);
+  };
+
   const statusLabel = status === 'loading'
     ? labels.tradeNotesLoading
     : status === 'saving'
@@ -107,17 +142,19 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
       <button
         type="button"
         className="backtest-replay__trade-notes-toggle"
-        aria-expanded={expanded}
-        aria-controls={editorId}
+        aria-expanded={hasExistingNote ? dialogOpen : expanded}
+        aria-controls={hasExistingNote ? dialogId : editorId}
         disabled={!hasLoaded}
-        onClick={() => setExpanded((isExpanded) => !isExpanded)}
+        onClick={handlePreviewClick}
       >
-        {preview || (
-          <span className="backtest-replay__trade-notes-add">
-            <Plus size={12} aria-hidden="true" />
-            {labels.tradeNotesAdd}
-          </span>
-        )}
+        {!dialogOpen && (preview
+          ? <span className="backtest-replay__trade-notes-preview">{preview}</span>
+          : (
+            <span className="backtest-replay__trade-notes-add">
+              <Plus size={12} aria-hidden="true" />
+              {labels.tradeNotesAdd}
+            </span>
+          ))}
       </button>
       {status === 'error' && (
         <div className="backtest-replay__trade-notes-error" role="alert">
@@ -138,7 +175,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
       <div
         id={editorId}
         className="backtest-replay__trade-notes-editor"
-        hidden={!expanded}
+        hidden={!expanded || hasExistingNote}
       >
         <textarea
           aria-label={labels.tradeNotesTitle}
@@ -148,6 +185,56 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
           onChange={(event) => handleNoteChange(event.target.value)}
         />
       </div>
+      {dialogOpen && createPortal(
+        <div
+          className="backtest-replay__trade-notes-backdrop"
+          onClick={() => setDialogOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') setDialogOpen(false);
+          }}
+        >
+          <section
+            id={dialogId}
+            className="backtest-replay__trade-notes-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={dialogTitleId}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <header className="backtest-replay__trade-notes-dialog-heading">
+              <h3 id={dialogTitleId}>{labels.tradeNotesTitle}</h3>
+              <span
+                className={`backtest-replay__trade-notes-status${status === 'error' ? ' backtest-replay__trade-notes-status--error' : ''}`}
+                role={status === 'error' ? 'alert' : 'status'}
+              >
+                {statusLabel}
+              </span>
+            </header>
+            <textarea
+              aria-label={labels.tradeNotesTitle}
+              placeholder={labels.tradeNotesPlaceholder}
+              value={note}
+              rows={8}
+              autoFocus
+              onChange={(event) => handleNoteChange(event.target.value)}
+            />
+            {status === 'error' && (
+              <div className="backtest-replay__trade-notes-error" role="alert">
+                {labels.tradeNotesSaveError} {errorMessage}
+              </div>
+            )}
+            <div className="backtest-replay__trade-notes-dialog-actions">
+              <button type="button" onClick={() => setDialogOpen(false)}>
+                {labels.tradeNotesClose}
+              </button>
+              <button type="button" onClick={handleDialogSave}>
+                {labels.tradeNotesSave}
+              </button>
+            </div>
+          </section>
+        </div>,
+        document.body,
+      )}
     </div>
   );
 }

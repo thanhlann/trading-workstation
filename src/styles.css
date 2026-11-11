@@ -47,7 +47,7 @@ button { cursor: pointer; }
 .watch-row { width: 100%; display: flex; align-items: center; gap: 8px; border: 0; padding: 9px 12px; text-align: left; color: #c7d3e2; background: transparent; }
 .watch-row:hover, .watch-row--active { background: #1b2d43; }
 .watch-row--active { box-shadow: inset 2px 0 #66a4ff; }
-.backtest-replay { width: 100%; flex: 1 1 auto; min-height: 0; margin: 0; padding: 10px 11px 12px; overflow-y: auto; overscroll-behavior: contain; }
+.backtest-replay { width: 100%; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 100%; margin: 0; padding: 10px 11px 12px; overflow-y: auto; overscroll-behavior: contain; }
 .backtest-replay__header, .backtest-replay__options, .backtest-replay__speed { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .backtest-replay__header { flex-wrap: wrap; }
 .backtest-replay__title { color: #71849c; font-size: 8px; font-weight: 700; letter-spacing: .8px; white-space: nowrap; }
@@ -117,7 +117,7 @@ button { cursor: pointer; }
 .backtest-replay__speed-option { min-width: 22px; padding: 4px 2px; border: 1px solid transparent; border-radius: 4px; color: #8295ac; background: transparent; font-size: 8px; font-weight: 600; }
 .backtest-replay__speed-option:hover { color: #c7d3e2; background: #172538; }
 .backtest-replay__speed-option--active { color: #83b5ff; background: #20334a; border-color: #365677; }
-.backtest-replay__trade-info { display: grid; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #223249; }
+.backtest-replay__trade-info { display: flex; flex: 1 0 auto; flex-direction: column; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #223249; }
 .backtest-replay__trade-card { display: grid; gap: 7px; padding: 8px; border: 1px solid #223249; border-radius: 6px; background: #111d2c; }
 .backtest-replay__trade-card-heading { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
 .backtest-replay__trade-card-heading > strong { color: #aab9cb; font-size: 8px; text-align: right; }
@@ -133,18 +133,32 @@ button { cursor: pointer; }
 .backtest-replay__trade-metric > strong { color: #dce6f3; font: 9px "DM Mono", monospace; overflow-wrap: anywhere; }
 .backtest-replay__trade-metric--wide { grid-column: 1 / -1; }
 .backtest-replay__trade-empty { margin: 0; color: #71849c; font-size: 9px; }
-.backtest-replay__trade-notes { gap: 8px; }
+.backtest-replay__trade-notes { display: flex; flex: 1 1 0; flex-direction: column; min-width: 0; min-height: 0; gap: 8px; overflow: hidden; }
+.backtest-replay__trade-notes > .backtest-replay__trade-card-heading,
+.backtest-replay__trade-notes > .backtest-replay__trade-notes-error,
+.backtest-replay__trade-notes > .backtest-replay__trade-notes-editor { flex: 0 0 auto; }
 .backtest-replay__trade-notes-status { padding: 3px 6px; border-radius: 999px; color: #24c995; background: #12392f; font-size: 8px; font-weight: 600; white-space: nowrap; }
 .backtest-replay__trade-notes-status--error { color: #f06c79; background: #3b2029; }
-.backtest-replay__trade-notes-toggle { width: 100%; min-height: 22px; padding: 2px 0; border: 0; color: #aab9cb; background: transparent; font-size: 11px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
+.backtest-replay__trade-notes-toggle { width: 100%; min-width: 0; min-height: 0; flex: 1 1 0; padding: 2px 0; overflow: auto; border: 0; color: #aab9cb; background: transparent; font-size: 11px; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
 .backtest-replay__trade-notes-toggle:hover:not(:disabled) { color: #dce6f3; }
 .backtest-replay__trade-notes-toggle:disabled { color: #71849c; cursor: default; }
-.backtest-replay__trade-notes-toggle:not(:disabled) { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.backtest-replay__trade-notes-toggle:not(:disabled) { display: flex; flex-direction: column; align-items: stretch; justify-content: flex-start; }
+.backtest-replay__trade-notes-preview { display: block; text-align: left; white-space: pre-wrap; overflow-wrap: anywhere; }
 .backtest-replay__trade-notes-add { display: inline-flex; align-items: center; gap: 4px; }
 .backtest-replay__trade-notes-editor[hidden] { display: none; }
 .backtest-replay__trade-notes-editor textarea { width: 100%; min-height: 82px; padding: 7px; border: 1px solid #293b52; border-radius: 5px; outline: 0; color: #dce6f3; background: #0b1523; font: 11px/1.5 Inter, sans-serif; resize: vertical; }
 .backtest-replay__trade-notes-editor textarea:focus { border-color: #365677; box-shadow: 0 0 0 1px #36567744; }
 .backtest-replay__trade-notes-editor textarea::placeholder { color: #71849c; }
+.backtest-replay__trade-notes-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 20px; background: #080f1bd9; }
+.backtest-replay__trade-notes-dialog { display: flex; flex-direction: column; gap: 10px; width: min(620px, 100%); height: min(76vh, 680px); max-height: calc(100vh - 40px); padding: 14px; border: 1px solid #2b3d55; border-radius: 8px; background: #111d2c; box-shadow: 0 18px 56px #0009; }
+.backtest-replay__trade-notes-dialog-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.backtest-replay__trade-notes-dialog-heading h3 { margin: 0; color: #dce6f3; font-size: 11px; font-weight: 700; letter-spacing: .7px; }
+.backtest-replay__trade-notes-dialog textarea { width: 100%; min-height: 0; flex: 1; padding: 9px; border: 1px solid #293b52; border-radius: 5px; outline: 0; color: #dce6f3; background: #0b1523; font: 12px/1.6 Inter, sans-serif; resize: vertical; }
+.backtest-replay__trade-notes-dialog textarea:focus { border-color: #365677; box-shadow: 0 0 0 1px #36567744; }
+.backtest-replay__trade-notes-dialog textarea::placeholder { color: #71849c; }
+.backtest-replay__trade-notes-dialog-actions { display: flex; justify-content: flex-end; gap: 7px; }
+.backtest-replay__trade-notes-dialog-actions button { padding: 6px 10px; border: 1px solid #2b3b50; border-radius: 5px; color: #aab9cb; background: #172538; font-size: 10px; }
+.backtest-replay__trade-notes-dialog-actions button:last-child { border-color: #365677; color: #dce6f3; background: #20334a; }
 .backtest-replay__trade-notes-error { display: grid; gap: 5px; color: #f06c79; font-size: 8px; overflow-wrap: anywhere; }
 .backtest-replay__trade-notes-error button { justify-self: start; padding: 3px 6px; border: 1px solid #4d3440; border-radius: 4px; color: #f6a0a9; background: #2a1c25; font-size: 8px; }
 @media (max-width: 1100px) {
