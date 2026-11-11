@@ -200,6 +200,15 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
       setTradeFilterActive(true);
       return;
     }
+    if (navigationTarget.type === 'marketStructure' && tradeFilterActive) {
+      setTradeFilterActive(false);
+      setTradeSetupFilterId('');
+      return;
+    }
+    if (selectedSetupId !== navigationTarget.setupId) {
+      setSelectedSetupId(navigationTarget.setupId);
+      return;
+    }
 
     const targetIndex = navigationTarget.type === 'trade'
       ? matchedTradeEntries.findIndex(({ trade }) => trade.number === navigationTarget.tradeNumber)
@@ -224,8 +233,10 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     setBacktestNavigationTarget,
     setReplayIndex,
     setSelectedSetupId,
+    selectedSetupId,
     setTradeFilterActive,
     tradeFilterActive,
+    setTradeSetupFilterId,
     timeframeMode,
     matchedTradeEntries,
     visibleMarketStates,
