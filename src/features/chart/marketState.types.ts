@@ -48,6 +48,7 @@ export interface TradeChartOverlay {
     sweep: {
       time: Time;
       direction: 'BULLISH' | 'BEARISH';
+      score?: number;
     } | null;
   };
 }

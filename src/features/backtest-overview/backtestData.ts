@@ -152,6 +152,7 @@ export interface BacktestTradePoi {
 export interface BacktestTradeSweep {
   time: number;
   direction: 'BULLISH' | 'BEARISH';
+  score?: number;
 }
 
 interface RawBacktestTradeMarketStructure extends Record<string, unknown> {
@@ -174,6 +175,7 @@ interface RawBacktestTradePoi extends Record<string, unknown> {
 interface RawBacktestTradeSweep extends Record<string, unknown> {
   time: number;
   direction: 'BULLISH' | 'BEARISH';
+  score?: number | null;
 }
 
 interface RawBacktestTradeTimeframe extends Record<string, unknown> {
@@ -274,6 +276,7 @@ function isBacktestTradeSweep(value: unknown): value is RawBacktestTradeSweep | 
     && Number.isSafeInteger(value.time)
     && value.time > 0
     && (value.direction === 'BULLISH' || value.direction === 'BEARISH')
+    && (value.score === undefined || value.score === null || isFiniteNumber(value.score))
   );
 }
 
@@ -592,6 +595,7 @@ function parseTrades(source: string): BacktestTrade[] {
       sweep: trade.ltf.sweep === null ? null : {
         time: trade.ltf.sweep.time,
         direction: trade.ltf.sweep.direction,
+        ...(typeof trade.ltf.sweep.score === 'number' ? { score: trade.ltf.sweep.score } : {}),
       },
     },
   }));

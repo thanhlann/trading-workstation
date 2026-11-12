@@ -215,9 +215,9 @@ function getTradePoiLabel(
 
   return {
     timeframe,
-    text: poi.type === 'FVG'
+    text: `${poi.type === 'FVG'
       ? timeframe === 'ltf' ? 'fvg' : 'FVG'
-      : timeframe === 'ltf' ? 'order block' : 'OB',
+      : timeframe === 'ltf' ? 'order block' : 'OB'}: ${poi.score.toFixed(1)}`,
     color: timeframe === 'htf'
       ? getPoiLineColorWithOpacity(poi, 0.58)
       : getPoiLineColor(poi),
@@ -740,7 +740,7 @@ export function ChartPanel({
           price: tradeOverlay.htf.marketStructure.eventPrice.price,
           shape: 'square' as const,
           color: tradeOverlay.htf.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
-          text: tradeOverlay.htf.marketStructure.event.toUpperCase(),
+          text: `${tradeOverlay.htf.marketStructure.event.toUpperCase()}: ${tradeOverlay.htf.marketStructure.score.toFixed(2)}`,
           size: 1,
         }] : []),
         {
@@ -755,7 +755,7 @@ export function ChartPanel({
           price: tradeOverlay.ltf.marketStructure.eventPrice.price,
           shape: 'circle',
           color: tradeOverlay.ltf.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
-          text: tradeOverlay.ltf.marketStructure.event.toLowerCase(),
+          text: `${tradeOverlay.ltf.marketStructure.event.toLowerCase()}: ${tradeOverlay.ltf.marketStructure.score.toFixed(2)}`,
           size: 1,
         },
         {
@@ -801,7 +801,9 @@ export function ChartPanel({
               ? 'arrowDown' as const
               : 'arrowUp' as const,
             color: tradeOverlay.ltf.sweep.direction === 'BEARISH' ? '#ef626c' : '#20b887',
-            text: 'sweep',
+            text: typeof tradeOverlay.ltf.sweep.score === 'number'
+              ? `sweep: ${tradeOverlay.ltf.sweep.score.toFixed(2)}`
+              : 'sweep',
             size: 1,
           }]
           : []),

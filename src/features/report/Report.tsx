@@ -12,8 +12,12 @@ import {
   loadBacktestTrades,
 } from '../backtest-overview/backtestData';
 import type { BacktestTrade } from '../backtest-overview/backtestData';
-import { TradeNotes } from '../backtest-overview/TradeNotes';
-import { getTradeNoteId, loadTradeNoteIds } from '../backtest-overview/tradeNotesStorage';
+import { TradeNotes, TRADE_NOTE_PRIORITY_COLORS } from '../backtest-overview/TradeNotes';
+import {
+  getTradeNoteId,
+  loadTradeNotes,
+  type TradeNotePriority,
+} from '../backtest-overview/tradeNotesStorage';
 
 interface ReportProps {
   symbol: MarketSymbol;
@@ -133,7 +137,7 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   const [selectedTradeNumber, setSelectedTradeNumber] = useState<number | null>(null);
   const [tradeDetailsOpen, setTradeDetailsOpen] = useState(false);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
-  const [tradeNoteIds, setTradeNoteIds] = useState<Set<string> | null>(null);
+  const [tradeNotes, setTradeNotes] = useState<Map<string, TradeNotePriority> | null>(null);
   const [tradeNotesError, setTradeNotesError] = useState<string | null>(null);
   const [tradeDataLoading, setTradeDataLoading] = useState(true);
   const [tradeDataError, setTradeDataError] = useState<string | null>(null);
@@ -219,21 +223,21 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
 
   useEffect(() => {
     let cancelled = false;
-    setTradeNoteIds(null);
+    setTradeNotes(null);
     setTradeNotesError(null);
 
     if (trades.length === 0) {
-      setTradeNoteIds(new Set());
+      setTradeNotes(new Map());
       return () => {
         cancelled = true;
       };
     }
 
-    loadTradeNoteIds(trades.map((trade) => (
+    loadTradeNotes(trades.map((trade) => (
       getTradeNoteId(trade.symbol, trade.number, trade.time)
     ))).then(
-      (ids) => {
-        if (!cancelled) setTradeNoteIds(ids);
+      (notes) => {
+        if (!cancelled) setTradeNotes(notes);
       },
       (error: unknown) => {
         if (!cancelled) {
@@ -504,11 +508,15 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   const selectedTradeNoteId = selectedTrade
     ? getTradeNoteId(selectedTrade.symbol, selectedTrade.number, selectedTrade.time)
     : null;
-  const updateTradeNotePresence = (id: string, hasNote: boolean) => {
-    setTradeNoteIds((current) => {
-      const next = new Set(current ?? []);
+  const updateTradeNotePresence = (
+    id: string,
+    hasNote: boolean,
+    priority: TradeNotePriority,
+  ) => {
+    setTradeNotes((current) => {
+      const next = new Map(current ?? []);
       if (hasNote) {
-        next.add(id);
+        next.set(id, priority);
       } else {
         next.delete(id);
       }
@@ -745,7 +753,8 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                       const tradeR = getTradeR(trade);
                       const tradeResult = getTradeResult(trade);
                       const tradeNoteId = getTradeNoteId(trade.symbol, trade.number, trade.time);
-                      const hasTradeNote = tradeNoteIds?.has(tradeNoteId) ?? false;
+                      const priority = tradeNotes?.get(tradeNoteId);
+                      const hasTradeNote = priority !== undefined;
                       return (
                         <tr
                           className={selectedTrade?.number === trade.number ? 'report-trade-row--selected' : ''}
@@ -792,7 +801,8 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                             >
                               <button
                                 type="button"
-                                className={`report-trade-note${hasTradeNote ? ' report-trade-note--active' : ''}${tradeNoteIds === null && !tradeNotesError ? ' report-trade-note--loading' : ''}`}
+                                className={`report-trade-note${hasTradeNote ? ' report-trade-note--active' : ''}${tradeNotes === null && !tradeNotesError ? ' report-trade-note--loading' : ''}`}
+                                style={priority ? { color: TRADE_NOTE_PRIORITY_COLORS[priority] } : undefined}
                                 aria-label={hasTradeNote
                                   ? `View notes for trade ${trade.number}`
                                   : `Add note for trade ${trade.number}`}
@@ -984,8 +994,8 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                         <TradeNotes
                           key={selectedTradeNoteId}
                           tradeId={selectedTradeNoteId}
-                          onHasNoteChange={(hasNote) => (
-                            updateTradeNotePresence(selectedTradeNoteId, hasNote)
+                          onHasNoteChange={(hasNote, priority) => (
+                            updateTradeNotePresence(selectedTradeNoteId, hasNote, priority)
                           )}
                         />
                       )}

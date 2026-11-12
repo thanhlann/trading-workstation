@@ -2,9 +2,20 @@ const DATABASE_NAME = 'trading-workstation-backtest-notes';
 const DATABASE_VERSION = 1;
 const STORE_NAME = 'tradeNotes';
 
-interface TradeNoteRecord {
-  id: string;
+export const TRADE_NOTE_PRIORITIES = ['Critical', 'High', 'Medium', 'Low', 'None'] as const;
+export type TradeNotePriority = (typeof TRADE_NOTE_PRIORITIES)[number];
+
+export interface TradeNote {
   text: string;
+  priority: TradeNotePriority;
+}
+
+interface TradeNoteRecord extends TradeNote {
+  id: string;
+}
+
+function isTradeNotePriority(value: unknown): value is TradeNotePriority {
+  return TRADE_NOTE_PRIORITIES.some((priority) => priority === value);
 }
 
 export function getTradeNoteId(
@@ -89,26 +100,27 @@ function isTradeNoteRecord(value: unknown): value is TradeNoteRecord {
     && 'id' in value
     && typeof value.id === 'string'
     && 'text' in value
-    && typeof value.text === 'string';
+    && typeof value.text === 'string'
+    && (!('priority' in value) || isTradeNotePriority(value.priority));
 }
 
-export async function loadTradeNote(id: string): Promise<string> {
+export async function loadTradeNote(id: string): Promise<TradeNote> {
   const database = await openDatabase();
   const transaction = database.transaction(STORE_NAME, 'readonly');
   const done = transactionComplete(transaction);
   const resultPromise = requestResult(transaction.objectStore(STORE_NAME).get(id));
   const [result] = await Promise.all([resultPromise, done]);
 
-  if (result === undefined) return '';
+  if (result === undefined) return { text: '', priority: 'None' };
   if (!isTradeNoteRecord(result)) {
     throw new Error('The stored trade note has an invalid format.');
   }
 
-  return result.text;
+  return { text: result.text, priority: result.priority ?? 'None' };
 }
 
-export async function loadTradeNoteIds(ids: readonly string[]): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
+export async function loadTradeNotes(ids: readonly string[]): Promise<Map<string, TradeNotePriority>> {
+  if (ids.length === 0) return new Map();
 
   const database = await openDatabase();
   const transaction = database.transaction(STORE_NAME, 'readonly');
@@ -121,23 +133,30 @@ export async function loadTradeNoteIds(ids: readonly string[]): Promise<Set<stri
   }
 
   const requestedIds = new Set(ids);
-  return new Set(
-    records
-      .filter((record) => requestedIds.has(record.id) && record.text.trim().length > 0)
-      .map((record) => record.id),
-  );
+  const loadedNotes = new Map<string, TradeNotePriority>();
+  for (const record of records) {
+    if (requestedIds.has(record.id)
+      && (record.text.trim().length > 0 || (record.priority ?? 'None') !== 'None')) {
+      loadedNotes.set(record.id, record.priority ?? 'None');
+    }
+  }
+  return loadedNotes;
 }
 
-export async function saveTradeNote(id: string, text: string): Promise<void> {
+export async function saveTradeNote(
+  id: string,
+  text: string,
+  priority: TradeNotePriority = 'None',
+): Promise<void> {
   const database = await openDatabase();
   const transaction = database.transaction(STORE_NAME, 'readwrite');
   const done = transactionComplete(transaction);
   const store = transaction.objectStore(STORE_NAME);
 
-  if (text.trim().length === 0) {
+  if (text.trim().length === 0 && priority === 'None') {
     store.delete(id);
   } else {
-    store.put({ id, text } satisfies TradeNoteRecord);
+    store.put({ id, text, priority } satisfies TradeNoteRecord);
   }
 
   await done;

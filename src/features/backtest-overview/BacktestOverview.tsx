@@ -344,6 +344,9 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
             ? {
               time: currentTradeEntry.trade.ltf.sweep.time as UTCTimestamp,
               direction: currentTradeEntry.trade.ltf.sweep.direction,
+              ...(currentTradeEntry.trade.ltf.sweep.score !== undefined
+                ? { score: currentTradeEntry.trade.ltf.sweep.score }
+                : {}),
             }
             : null,
         },

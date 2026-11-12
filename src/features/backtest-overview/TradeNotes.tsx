@@ -2,13 +2,30 @@ import { Plus } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useEffect, useId, useRef, useState } from 'react';
 import { SYSTEM_CONFIG } from '../../config/system';
-import { loadTradeNote, saveTradeNote } from './tradeNotesStorage';
+import {
+  loadTradeNote,
+  saveTradeNote,
+  TRADE_NOTE_PRIORITIES,
+  type TradeNotePriority,
+} from './tradeNotesStorage';
 
 type NoteStatus = 'loading' | 'saved' | 'saving' | 'error';
 
+export const TRADE_NOTE_PRIORITY_COLORS: Record<TradeNotePriority, string> = {
+  Critical: '#DC2626',
+  High: '#F97316',
+  Medium: '#EAB308',
+  Low: '#3B82F6',
+  None: '#64748B',
+};
+
 interface TradeNotesProps {
   tradeId: string;
-  onHasNoteChange?: (hasNote: boolean) => void;
+  onHasNoteChange?: (hasNote: boolean, priority: TradeNotePriority) => void;
+}
+
+function hasTradeNote(text: string, priority: TradeNotePriority): boolean {
+  return text.trim().length > 0 || priority !== 'None';
 }
 
 function getErrorMessage(error: unknown): string {
@@ -17,6 +34,7 @@ function getErrorMessage(error: unknown): string {
 
 export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
   const [note, setNote] = useState('');
+  const [priority, setPriority] = useState<TradeNotePriority>('None');
   const [expanded, setExpanded] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [hasExistingNote, setHasExistingNote] = useState(false);
@@ -31,6 +49,8 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
   const editorId = useId();
   const dialogId = useId();
   const dialogTitleId = useId();
+  const priorityId = useId();
+  const dialogPriorityId = useId();
   const labels = SYSTEM_CONFIG.ui.backtestReplay;
   const preview = note.trim() ? note : '';
 
@@ -45,11 +65,15 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
     loadTradeNote(tradeId).then(
       (savedNote) => {
         if (!active) return;
-        setNote(savedNote);
-        setHasExistingNote(savedNote.trim().length > 0);
+        setNote(savedNote.text);
+        setPriority(savedNote.priority);
+        setHasExistingNote(hasTradeNote(savedNote.text, savedNote.priority));
         setHasLoaded(true);
         setStatus('saved');
-        onHasNoteChangeRef.current?.(savedNote.trim().length > 0);
+        onHasNoteChangeRef.current?.(
+          hasTradeNote(savedNote.text, savedNote.priority),
+          savedNote.priority,
+        );
       },
       (error: unknown) => {
         if (!active) return;
@@ -70,11 +94,11 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
     setStatus('saving');
     setErrorType(null);
     setErrorMessage('');
-    saveTradeNote(tradeId, text).then(
+    saveTradeNote(tradeId, text, priority).then(
       () => {
         if (revision !== saveRevision.current) return;
         setStatus('saved');
-        onHasNoteChangeRef.current?.(text.trim().length > 0);
+        onHasNoteChangeRef.current?.(hasTradeNote(text, priority), priority);
       },
       (error: unknown) => {
         if (revision !== saveRevision.current) return;
@@ -90,12 +114,12 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
     setStatus('saving');
     setErrorType(null);
     setErrorMessage('');
-    saveTradeNote(tradeId, note).then(
+    saveTradeNote(tradeId, note, priority).then(
       () => {
         if (revision !== saveRevision.current) return;
         setStatus('saved');
-        setHasExistingNote(note.trim().length > 0);
-        onHasNoteChangeRef.current?.(note.trim().length > 0);
+        setHasExistingNote(hasTradeNote(note, priority));
+        onHasNoteChangeRef.current?.(hasTradeNote(note, priority), priority);
         setDialogOpen(false);
       },
       (error: unknown) => {
@@ -108,13 +132,58 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
   };
 
   const handlePreviewClick = () => {
-    if (hasExistingNote && note.trim().length > 0) {
+    if (hasExistingNote) {
       setDialogOpen(true);
       return;
     }
 
     setExpanded((isExpanded) => !isExpanded);
   };
+
+  const handlePriorityChange = (nextPriority: TradeNotePriority) => {
+    const revision = ++saveRevision.current;
+    setPriority(nextPriority);
+    setStatus('saving');
+    setErrorType(null);
+    setErrorMessage('');
+    saveTradeNote(tradeId, note, nextPriority).then(
+      () => {
+        if (revision !== saveRevision.current) return;
+        setStatus('saved');
+        setHasExistingNote(hasTradeNote(note, nextPriority));
+        onHasNoteChangeRef.current?.(hasTradeNote(note, nextPriority), nextPriority);
+      },
+      (error: unknown) => {
+        if (revision !== saveRevision.current) return;
+        setStatus('error');
+        setErrorType('save');
+        setErrorMessage(getErrorMessage(error));
+      },
+    );
+  };
+
+  const renderPrioritySelect = (id: string) => (
+    <div className="backtest-replay__trade-notes-priority">
+      <label htmlFor={id}>{labels.tradeNotesPriority}</label>
+      <span
+        className="backtest-replay__trade-notes-priority-dot"
+        style={{ backgroundColor: TRADE_NOTE_PRIORITY_COLORS[priority] }}
+        aria-hidden="true"
+      />
+      <select
+        id={id}
+        value={priority}
+        disabled={!hasLoaded}
+        onChange={(event) => handlePriorityChange(event.target.value as TradeNotePriority)}
+      >
+        {TRADE_NOTE_PRIORITIES.map((option) => (
+          <option key={option} value={option}>
+            {labels[`tradeNotesPriority${option}` as keyof typeof labels]}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
 
   const statusLabel = status === 'loading'
     ? labels.tradeNotesLoading
@@ -129,7 +198,12 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
   return (
     <div className="backtest-replay__trade-card backtest-replay__trade-notes">
       <div className="backtest-replay__trade-card-heading">
-        <h3 className="backtest-replay__trade-card-title">
+        <h3
+          className="backtest-replay__trade-card-title"
+          style={hasTradeNote(note, priority)
+            ? { color: TRADE_NOTE_PRIORITY_COLORS[priority] }
+            : undefined}
+        >
           {labels.tradeNotesTitle}
         </h3>
         <span
@@ -177,6 +251,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
         className="backtest-replay__trade-notes-editor"
         hidden={!expanded || hasExistingNote}
       >
+        {renderPrioritySelect(priorityId)}
         <textarea
           aria-label={labels.tradeNotesTitle}
           placeholder={labels.tradeNotesPlaceholder}
@@ -202,7 +277,14 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
             onClick={(event) => event.stopPropagation()}
           >
             <header className="backtest-replay__trade-notes-dialog-heading">
-              <h3 id={dialogTitleId}>{labels.tradeNotesTitle}</h3>
+              <h3
+                id={dialogTitleId}
+                style={hasTradeNote(note, priority)
+                  ? { color: TRADE_NOTE_PRIORITY_COLORS[priority] }
+                  : undefined}
+              >
+                {labels.tradeNotesTitle}
+              </h3>
               <span
                 className={`backtest-replay__trade-notes-status${status === 'error' ? ' backtest-replay__trade-notes-status--error' : ''}`}
                 role={status === 'error' ? 'alert' : 'status'}
@@ -210,6 +292,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
                 {statusLabel}
               </span>
             </header>
+            {renderPrioritySelect(dialogPriorityId)}
             <textarea
               aria-label={labels.tradeNotesTitle}
               placeholder={labels.tradeNotesPlaceholder}
