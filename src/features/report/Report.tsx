@@ -16,6 +16,7 @@ import { TradeNotes, TRADE_NOTE_PRIORITY_COLORS } from '../backtest-overview/Tra
 import {
   getTradeNoteId,
   loadTradeNotes,
+  TRADE_NOTE_PRIORITIES,
   type TradeNotePriority,
 } from '../backtest-overview/tradeNotesStorage';
 
@@ -30,7 +31,9 @@ const initialSetupTypes = ['CHOCH + OB', 'BOS + OB'];
 const timeframes = ['1m', '5m', '15m', '1h', '4h', '1d'];
 const reportTabs = ['Trade Explorer', 'LTF Setup Explorer', 'Performance', 'Setup Analysis', 'Risk Analysis', 'Overview'];
 const tradeExplorerFilters = ['All Trades', 'Win', 'Loss', 'Long', 'Short'] as const;
+const tradeExplorerPriorityFilters = ['All Priorities', ...TRADE_NOTE_PRIORITIES] as const;
 type TradeExplorerFilter = (typeof tradeExplorerFilters)[number];
+type TradeExplorerPriorityFilter = (typeof tradeExplorerPriorityFilters)[number];
 type ExplorerBias = 'BULLISH' | 'BEARISH';
 
 interface LtfExplorerEntry {
@@ -134,6 +137,7 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   const [selectedSetupTypes, setSelectedSetupTypes] = useState<string[]>(initialSetupTypes);
   const [activeReportTab, setActiveReportTab] = useState(reportTabs[0]);
   const [tradeExplorerFilter, setTradeExplorerFilter] = useState<TradeExplorerFilter>('All Trades');
+  const [tradeExplorerPriorityFilter, setTradeExplorerPriorityFilter] = useState<TradeExplorerPriorityFilter>('All Priorities');
   const [selectedTradeNumber, setSelectedTradeNumber] = useState<number | null>(null);
   const [tradeDetailsOpen, setTradeDetailsOpen] = useState(false);
   const [trades, setTrades] = useState<BacktestTrade[]>([]);
@@ -403,6 +407,11 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   ];
   const explorerTrades = useMemo(() => filteredTrades
     .filter((trade) => {
+      if (tradeExplorerPriorityFilter !== 'All Priorities') {
+        const noteId = getTradeNoteId(trade.symbol, trade.number, trade.time);
+        if (tradeNotes?.get(noteId) !== tradeExplorerPriorityFilter) return false;
+      }
+
       switch (tradeExplorerFilter) {
         case 'Win':
           return trade.pnl > 0;
@@ -416,7 +425,12 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
           return true;
       }
     })
-    .sort((left, right) => left.number - right.number), [filteredTrades, tradeExplorerFilter]);
+    .sort((left, right) => left.number - right.number), [
+    filteredTrades,
+    tradeExplorerFilter,
+    tradeExplorerPriorityFilter,
+    tradeNotes,
+  ]);
   const setupExplorerRows = useMemo(() => {
     const symbolCode = symbol.replace(/-/g, '').toUpperCase();
     const setupsForSymbol = explorerSetups
@@ -716,7 +730,7 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
       {activeReportTab === 'Trade Explorer' && (
         <section className="report-explorer" aria-labelledby="report-explorer-title">
           <h3 id="report-explorer-title">Trade Explorer</h3>
-          <div className="report-explorer__filters" role="group" aria-label="Trade filters">
+          <div className="report-explorer__filters" role="group" aria-label="Trade and note priority filters">
             {tradeExplorerFilters.map((filter) => (
               <button
                 type="button"
@@ -728,6 +742,22 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                 {filter}
               </button>
             ))}
+            <span className="report-explorer__filter-divider" aria-hidden="true" />
+            {tradeExplorerPriorityFilters.map((filter) => {
+              const isActive = tradeExplorerPriorityFilter === filter;
+              const isPriority = filter !== 'All Priorities';
+              return (
+                <button
+                  type="button"
+                  key={filter}
+                  className={`report-explorer__filter${isActive ? ' report-explorer__filter--active' : ''}${isPriority ? ` report-explorer__filter--priority report-explorer__filter--priority-${filter.toLowerCase()}` : ''}`}
+                  aria-pressed={isActive}
+                  onClick={() => setTradeExplorerPriorityFilter(filter)}
+                >
+                  {filter}
+                </button>
+              );
+            })}
           </div>
           {tradeNotesError && (
             <p className="report-explorer__note-error" role="alert">

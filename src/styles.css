@@ -336,6 +336,14 @@ button { cursor: pointer; }
 .report-explorer__filter { padding: 4px 8px; border: 1px solid transparent; border-radius: 999px; color: #aab9cb; background: #172538; font-size: 9px; font-weight: 600; }
 .report-explorer__filter:hover { color: #fff; background: #22344a; }
 .report-explorer__filter--active { border-color: #365677; color: #83b5ff; background: #1b3555; }
+.report-explorer__filter--priority.report-explorer__filter--active { border-color: currentColor; }
+.report-explorer__filter-divider { align-self: center; flex: 0 0 1px; height: 17px; margin: 0 3px; background: #34445a; }
+.report-explorer__filter--priority-critical { color: #ff666b; background: #351d22; }
+.report-explorer__filter--priority-high { color: #ff9638; background: #382819; }
+.report-explorer__filter--priority-medium { color: #45a7f4; background: #172e43; }
+.report-explorer__filter--priority-low { color: #28bd78; background: #143426; }
+.report-explorer__filter--priority-none { color: #94a3b8; background: #202c3b; }
+.report-explorer__filter--priority:hover { filter: brightness(1.2); }
 .report-explorer__filter--win.report-explorer__filter--active { border-color: #176345; color: #24c995; background: #12392e; }
 .report-explorer__filter--loss.report-explorer__filter--active { border-color: #7a3540; color: #f06c79; background: #3a2028; }
 .report-ltf-explorer { display: grid; flex: 0 0 auto; min-height: 260px; align-content: start; gap: 12px; padding: 14px; border: 1px solid #26364b; border-radius: 8px; background: #101a29; }
