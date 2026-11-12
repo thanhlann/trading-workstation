@@ -188,7 +188,6 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   };
 
   const openTradeChart = (trade: BacktestTrade) => {
-    setTradeDetailsOpen(false);
     navigateToWorkspace({ mode: 'backtest', activeWorkspacePage: 'chart' });
     setSelectedSetupId(trade.setup.id);
     setBacktestNavigationTarget({
