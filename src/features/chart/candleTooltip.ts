@@ -4,6 +4,25 @@ const ATR_PERIOD = 14;
 const RSI_PERIOD = 14;
 const VOLUME_AVERAGE_PERIOD = 20;
 
+export interface CandleStructureMetrics {
+  bodyAtr: number | null;
+  bodyRatio: number;
+  closePos: number;
+}
+
+function createCandleStructureMetrics(
+  candle: CandleData,
+  body: number,
+  range: number,
+  atr: number | null,
+): CandleStructureMetrics {
+  return {
+    bodyAtr: atr === null || atr === 0 ? null : body / atr,
+    bodyRatio: candle.bodyRatio ?? (range === 0 ? 0 : body / range),
+    closePos: candle.closePos ?? (range === 0 ? 0 : (candle.close - candle.low) / range),
+  };
+}
+
 function calculateTrueRange(candle: CandleData, previousClose?: number): number {
   if (previousClose === undefined) return candle.high - candle.low;
   return Math.max(
@@ -76,6 +95,7 @@ export function getCandleTooltipData(
   const body = Math.abs(candle.close - candle.open);
   const range = candle.high - candle.low;
   const atr = calculateAtr(candles, index);
+  const metrics = createCandleStructureMetrics(candle, body, range, atr);
   const timestampMilliseconds = candle.time * 1000;
 
   return {
@@ -88,7 +108,9 @@ export function getCandleTooltipData(
     upperWick: candle.high - Math.max(candle.open, candle.close),
     lowerWick: Math.min(candle.open, candle.close) - candle.low,
     body,
-    bodyRatio: range === 0 ? 0 : body / range,
+    bodyRatio: metrics.bodyRatio,
+    bodyAtr: metrics.bodyAtr,
+    closePos: metrics.closePos,
     range,
     rangeAtr: atr === null || atr === 0 ? null : range / atr,
     volume: candle.volume ?? null,
@@ -96,4 +118,18 @@ export function getCandleTooltipData(
     rsi: calculateRsi(candles, index),
     volumeRatio: calculateVolumeRatio(candles, index),
   };
+}
+
+export function getCandleStructureMetrics(
+  candles: CandleData[],
+  index: number,
+): CandleStructureMetrics {
+  const candle = candles[index];
+  if (!candle) {
+    throw new Error('Cannot create candle metrics for an invalid candle.');
+  }
+
+  const body = Math.abs(candle.close - candle.open);
+  const range = candle.high - candle.low;
+  return createCandleStructureMetrics(candle, body, range, calculateAtr(candles, index));
 }

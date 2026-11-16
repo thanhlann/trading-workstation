@@ -7,11 +7,13 @@ import { MARKET_SYMBOLS, type MarketSymbol } from '../../config/marketSymbols';
 import { SYSTEM_CONFIG, type TradingMode } from '../../config/system';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import {
+  loadBacktestCandles,
   loadBacktestMarketStates,
   loadBacktestSetups,
   loadBacktestTrades,
 } from '../backtest-overview/backtestData';
 import type { BacktestTrade } from '../backtest-overview/backtestData';
+import { getCandleStructureMetrics } from '../chart/candleTooltip';
 import { TradeNotes, TRADE_NOTE_PRIORITY_COLORS } from '../backtest-overview/TradeNotes';
 import {
   getMarketStructureNoteId,
@@ -43,6 +45,7 @@ interface LtfExplorerEntry {
   event: 'bos' | 'choch';
   bias: ExplorerBias;
   previousBias: ExplorerBias | null;
+  score: number;
   time: number;
   invalidAt: number | null;
   poiCount: number;
@@ -153,6 +156,8 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   const [explorerSetups, setExplorerSetups] = useState<Awaited<ReturnType<typeof loadBacktestSetups>>>([]);
   const [explorerHtfStates, setExplorerHtfStates] = useState<Awaited<ReturnType<typeof loadBacktestMarketStates>>>([]);
   const [explorerLtfStates, setExplorerLtfStates] = useState<Awaited<ReturnType<typeof loadBacktestMarketStates>>>([]);
+  const [explorerHtfCandles, setExplorerHtfCandles] = useState<Awaited<ReturnType<typeof loadBacktestCandles>>>([]);
+  const [explorerLtfCandles, setExplorerLtfCandles] = useState<Awaited<ReturnType<typeof loadBacktestCandles>>>([]);
   const [explorerDataLoading, setExplorerDataLoading] = useState(true);
   const [explorerDataError, setExplorerDataError] = useState<string | null>(null);
   const [setupSearch, setSetupSearch] = useState('');
@@ -161,8 +166,14 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
   const [selectedHtfStructureId, setSelectedHtfStructureId] = useState<string | null>(null);
   const [selectedLtfHtfStructureId, setSelectedLtfHtfStructureId] = useState<string | null>(null);
   const [htfDetailsOpen, setHtfDetailsOpen] = useState(false);
+  const [selectedLtfStructureNumber, setSelectedLtfStructureNumber] = useState<number | null>(null);
+  const [ltfDetailsOpen, setLtfDetailsOpen] = useState(false);
+  const [ltfStructureNotes, setLtfStructureNotes] = useState<Map<string, TradeNotePriority> | null>(null);
+  const [ltfStructureNotesError, setLtfStructureNotesError] = useState<string | null>(null);
   const [openActionsMenu, setOpenActionsMenu] = useState<{ type: 'setup' | 'ltf' | 'trade'; number: number } | null>(null);
   const actionMenuRef = useRef<HTMLDivElement>(null);
+  const htfExplorerContentRef = useRef<HTMLDivElement>(null);
+  const [htfExplorerContentHeight, setHtfExplorerContentHeight] = useState<number | null>(null);
 
   useEffect(() => {
     if (openActionsMenu === null) return;
@@ -282,12 +293,16 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
       loadBacktestSetups(),
       loadBacktestMarketStates('htf'),
       loadBacktestMarketStates('ltf'),
+      loadBacktestCandles('htf'),
+      loadBacktestCandles('ltf'),
     ]).then(
-      ([setups, htfStates, ltfStates]) => {
+      ([setups, htfStates, ltfStates, htfCandles, ltfCandles]) => {
         if (!cancelled) {
           setExplorerSetups(setups);
           setExplorerHtfStates(htfStates);
           setExplorerLtfStates(ltfStates);
+          setExplorerHtfCandles(htfCandles);
+          setExplorerLtfCandles(ltfCandles);
         }
       },
       (error: unknown) => {
@@ -501,6 +516,7 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
             event: state.marketStructure.event,
             bias: state.marketStructure.bias,
             previousBias,
+            score: state.marketStructure.score,
             time: marketStructureTime,
             invalidAt,
             poiCount: state.pois.length,
@@ -548,8 +564,45 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
     !ltfSearch.trim()
     || structure.id.toLowerCase().includes(ltfSearch.trim().toLowerCase())
   )) ?? [];
+  const selectedLtfStructure = selectedLtfHtfStructure?.ltfMarketStructures.find(
+    (structure) => structure.number === selectedLtfStructureNumber,
+  ) ?? null;
+  const selectHtfStructure = (structureId: string) => {
+    if (selectedLtfHtfStructure === null) {
+      const height = htfExplorerContentRef.current?.getBoundingClientRect().height ?? 0;
+      if (height > 0) setHtfExplorerContentHeight(height);
+    }
+    setSelectedHtfStructureId(structureId);
+    setSelectedLtfHtfStructureId(structureId);
+    setLtfSearch('');
+    setSelectedLtfStructureNumber(null);
+    setLtfDetailsOpen(false);
+  };
+  const htfCandleMetricsByTime = useMemo(
+    () => new Map(explorerHtfCandles.map((candle, index) => [
+      Number(candle.time),
+      getCandleStructureMetrics(explorerHtfCandles, index),
+    ])),
+    [explorerHtfCandles],
+  );
+  const ltfCandleMetricsByTime = useMemo(
+    () => new Map(explorerLtfCandles.map((candle, index) => [
+      Number(candle.time),
+      getCandleStructureMetrics(explorerLtfCandles, index),
+    ])),
+    [explorerLtfCandles],
+  );
+  const selectedHtfCandleMetrics = selectedHtfStructure
+    ? htfCandleMetricsByTime.get(selectedHtfStructure.time) ?? null
+    : null;
+  const selectedLtfCandleMetrics = selectedLtfStructure
+    ? ltfCandleMetricsByTime.get(selectedLtfStructure.time) ?? null
+    : null;
   const selectedHtfStructureNoteId = selectedHtfStructure
     ? getMarketStructureNoteId(symbol, selectedHtfStructure.number, selectedHtfStructure.time)
+    : null;
+  const selectedLtfStructureNoteId = selectedLtfStructure
+    ? getMarketStructureNoteId(symbol, selectedLtfStructure.number, selectedLtfStructure.time, 'ltf')
     : null;
 
   useEffect(() => {
@@ -575,6 +628,36 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
       cancelled = true;
     };
   }, [setupExplorerRows, symbol]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLtfStructureNotes(null);
+    setLtfStructureNotesError(null);
+    if (selectedLtfHtfStructure === null) {
+      setLtfStructureNotes(new Map());
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const noteIds = selectedLtfHtfStructure.ltfMarketStructures.map((structure) => (
+      getMarketStructureNoteId(symbol, structure.number, structure.time, 'ltf')
+    ));
+    loadTradeNotes(noteIds).then(
+      (notes) => {
+        if (!cancelled) setLtfStructureNotes(notes);
+      },
+      (error: unknown) => {
+        if (!cancelled) {
+          setLtfStructureNotesError(error instanceof Error ? error.message : String(error));
+        }
+      },
+    );
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedLtfHtfStructure, symbol]);
   const selectedTrade = explorerTrades.find((trade) => trade.number === selectedTradeNumber)
     ?? explorerTrades[0]
     ?? null;
@@ -1103,7 +1186,10 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
         </section>
       )}
       {activeReportTab === 'Market Structure Explorer' && (
-        <section className="report-ltf-explorer" aria-labelledby="htf-market-structure-title">
+        <section
+          className={`report-ltf-explorer${selectedLtfHtfStructure ? ' report-ltf-explorer--ltf-selected' : ''}`}
+          aria-labelledby="htf-market-structure-title"
+        >
           <div className="report-ltf-explorer__searches">
             <label className="report-explorer__search">
               <Search size={13} aria-hidden="true" />
@@ -1133,7 +1219,13 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
             <p className="report-ltf-explorer__message" role="alert">{explorerDataError ?? tradeDataError}</p>
           ) : (
             <>
-              <div className={`report-explorer__content report-htf-explorer__content${htfDetailsOpen && selectedHtfStructure ? ' report-explorer__content--details-open report-htf-explorer__content--details-open' : ''}`}>
+              <div
+                ref={htfExplorerContentRef}
+                className={`report-explorer__content report-htf-explorer__content${htfDetailsOpen && selectedHtfStructure ? ' report-explorer__content--details-open report-htf-explorer__content--details-open' : ''}`}
+                style={selectedLtfHtfStructure && htfExplorerContentHeight !== null
+                  ? { height: `${htfExplorerContentHeight}px` }
+                  : undefined}
+              >
               <section className="report-ltf-explorer__list" aria-labelledby="htf-market-structure-title">
                 <header className="report-ltf-explorer__section-heading">
                   <h3 id="htf-market-structure-title">Market Structure HTF</h3>
@@ -1172,17 +1264,11 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                             className={isSelected ? 'report-ltf-explorer__row--selected' : ''}
                             tabIndex={0}
                             aria-selected={isSelected}
-                            onClick={() => {
-                              setSelectedHtfStructureId(structure.id);
-                              setSelectedLtfHtfStructureId(structure.id);
-                              setLtfSearch('');
-                            }}
+                            onClick={() => selectHtfStructure(structure.id)}
                             onKeyDown={(event) => {
                               if (event.key === 'Enter' || event.key === ' ') {
                                 event.preventDefault();
-                                setSelectedHtfStructureId(structure.id);
-                                setSelectedLtfHtfStructureId(structure.id);
-                                setLtfSearch('');
+                                selectHtfStructure(structure.id);
                               }
                             }}
                           >
@@ -1331,7 +1417,7 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
 
                   <div className="report-trade-drawer__body">
                     <section className="report-trade-drawer__section" aria-labelledby="htf-market-structure-overview-title">
-                      <h5 id="htf-market-structure-overview-title">Market Structure Overview</h5>
+                      <h5 id="htf-market-structure-overview-title">Market Structure</h5>
                       <dl className="report-trade-drawer__overview">
                         <div>
                           <dt>HTF MSID</dt>
@@ -1369,6 +1455,14 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                         <div><dt>LTF Structures</dt><dd>{selectedHtfStructure.ltfMarketStructures.length}</dd></div>
                       </dl>
                     </section>
+                    <section className="report-trade-drawer__section" aria-labelledby="htf-candle-overview-title">
+                      <h5 id="htf-candle-overview-title">Candle Overview</h5>
+                      <dl className="report-trade-drawer__overview">
+                        <div><dt>Body ATR</dt><dd>{selectedHtfCandleMetrics?.bodyAtr?.toFixed(2) ?? '—'}</dd></div>
+                        <div><dt>Body Ratio</dt><dd>{selectedHtfCandleMetrics?.bodyRatio.toFixed(2) ?? '—'}</dd></div>
+                        <div><dt>Close Pos</dt><dd>{selectedHtfCandleMetrics?.closePos.toFixed(2) ?? '—'}</dd></div>
+                      </dl>
+                    </section>
 
                     {htfStructureNotesError && (
                       <p className="report-explorer__note-error" role="alert">
@@ -1396,6 +1490,7 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
               </div>
 
               {selectedLtfHtfStructure ? (
+                <div className={`report-explorer__content report-ltf-explorer__content${ltfDetailsOpen && selectedLtfStructure ? ' report-explorer__content--details-open report-ltf-explorer__content--details-open' : ''}`}>
                 <section className="report-ltf-explorer__list" aria-labelledby="ltf-market-structure-title">
                   <label className="report-explorer__search">
                     <Search size={13} aria-hidden="true" />
@@ -1429,8 +1524,21 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredLtfExplorerRows.map((structure) => (
-                          <tr key={structure.number}>
+                        {filteredLtfExplorerRows.map((structure) => {
+                          const noteId = getMarketStructureNoteId(
+                            symbol,
+                            structure.number,
+                            structure.time,
+                            'ltf',
+                          );
+                          const notePriority = ltfStructureNotes?.get(noteId);
+                          return (
+                          <tr
+                            key={structure.number}
+                            className={selectedLtfStructureNumber === structure.number
+                              ? 'report-ltf-explorer__row--selected'
+                              : ''}
+                          >
                             <td>{structure.id}</td>
                             <td>{selectedLtfHtfStructure.setupNumber === null
                               ? ''
@@ -1465,6 +1573,23 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                               >
                                 <button
                                   type="button"
+                                  className={`report-trade-note${ltfStructureNotes?.has(
+                                    noteId,
+                                  ) ? ' report-trade-note--active' : ''}${ltfStructureNotes === null && !ltfStructureNotesError ? ' report-trade-note--loading' : ''}`}
+                                  style={notePriority
+                                    ? { color: TRADE_NOTE_PRIORITY_COLORS[notePriority] }
+                                    : undefined}
+                                  aria-label={`Add or view note for LTF market structure ${structure.number}`}
+                                  title={`Add or view note for LTF market structure ${structure.number}`}
+                                  onClick={() => {
+                                    setSelectedLtfStructureNumber(structure.number);
+                                    setLtfDetailsOpen(true);
+                                  }}
+                                >
+                                  <NotebookPen size={14} aria-hidden="true" />
+                                </button>
+                                <button
+                                  type="button"
                                   className="report-ltf-explorer__actions-trigger"
                                   aria-label={`Actions for ${structure.id}`}
                                   aria-haspopup="menu"
@@ -1480,9 +1605,18 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                                 {openActionsMenu?.type === 'ltf' && openActionsMenu.number === structure.number && (
                                   <div className="report-ltf-explorer__actions-menu" role="menu" aria-label={`${structure.id} actions`}>
                                     <div className="report-ltf-explorer__actions-heading">{structure.id} · ACTIONS</div>
-                                    <button type="button" role="menuitem" className="report-ltf-explorer__action-item" disabled>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      className="report-ltf-explorer__action-item"
+                                      onClick={() => {
+                                        setSelectedLtfStructureNumber(structure.number);
+                                        setLtfDetailsOpen(true);
+                                        setOpenActionsMenu(null);
+                                      }}
+                                    >
                                       <Eye size={13} aria-hidden="true" />
-                                      <span>View Details</span>
+                                      <span>View Market Structure Details</span>
                                     </button>
                                     <button
                                       type="button"
@@ -1516,7 +1650,8 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                               </div>
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                         {filteredLtfExplorerRows.length === 0 && (
                           <tr><td className="report-ltf-explorer__empty" colSpan={11}>No market structures match this search.</td></tr>
                         )}
@@ -1524,6 +1659,100 @@ export function Report({ symbol, mode, onSetSymbol }: ReportProps) {
                     </table>
                   </div>
                 </section>
+                {ltfDetailsOpen && selectedLtfStructure && (
+                  <aside
+                    className="report-trade-drawer"
+                    aria-labelledby="ltf-market-structure-details-title"
+                  >
+                    <header className="report-trade-drawer__header">
+                      <div>
+                        <h4 id="ltf-market-structure-details-title">Market Structure Details</h4>
+                        <p>
+                          {symbol.replace(/-/g, '')} · LTF-{String(selectedLtfStructure.number).padStart(3, '0')}
+                        </p>
+                      </div>
+                      <div className="report-trade-drawer__header-actions">
+                        <span className={`report-trade-drawer__status${selectedLtfStructure.invalidAt === null
+                          ? ''
+                          : ' report-trade-drawer__status--invalid'}`}>
+                          {selectedLtfStructure.invalidAt === null ? 'Active' : 'Invalid'}
+                        </span>
+                        <button
+                          type="button"
+                          className="report-trade-drawer__close"
+                          aria-label="Close Market Structure Details"
+                          onClick={() => setLtfDetailsOpen(false)}
+                        >
+                          <X size={14} aria-hidden="true" />
+                        </button>
+                      </div>
+                    </header>
+                    <div className="report-trade-drawer__body">
+                      <section
+                        className="report-trade-drawer__section"
+                        aria-labelledby="ltf-market-structure-overview-title"
+                      >
+                        <h5 id="ltf-market-structure-overview-title">Market Structure</h5>
+                        <dl className="report-trade-drawer__overview">
+                          <div>
+                            <dt>LTF MSID</dt>
+                            <dd>{selectedLtfStructure.id}</dd>
+                          </div>
+                          <div>
+                            <dt>Setup ID</dt>
+                            <dd>{selectedLtfHtfStructure.setupNumber === null
+                              ? '—'
+                              : `S-${String(selectedLtfHtfStructure.setupNumber).padStart(3, '0')}`}</dd>
+                          </div>
+                          <div><dt>Event</dt><dd>{selectedLtfStructure.event.toUpperCase()}</dd></div>
+                          <div>
+                            <dt>Direction</dt>
+                            <dd className={selectedLtfStructure.bias === 'BULLISH' ? 'positive' : 'negative'}>
+                              {selectedLtfStructure.bias === 'BULLISH' ? 'Bullish' : 'Bearish'}
+                            </dd>
+                          </div>
+                          <div><dt>Previous Bias</dt><dd>{selectedLtfStructure.previousBias === null
+                            ? '—'
+                            : selectedLtfStructure.previousBias === 'BULLISH' ? 'Bullish' : 'Bearish'}</dd></div>
+                          <div><dt>Scored</dt><dd>{selectedLtfStructure.score.toFixed(2)}</dd></div>
+                          <div><dt>Created</dt><dd>{formatExplorerTime(selectedLtfStructure.time)}</dd></div>
+                          <div><dt>Invalid At</dt><dd>{formatExplorerTime(selectedLtfStructure.invalidAt)}</dd></div>
+                          <div><dt>POIs</dt><dd>{selectedLtfStructure.poiCount}</dd></div>
+                          <div><dt>Trades</dt><dd>{selectedLtfStructure.tradeCount}</dd></div>
+                        </dl>
+                      </section>
+                      <section className="report-trade-drawer__section" aria-labelledby="ltf-candle-overview-title">
+                        <h5 id="ltf-candle-overview-title">Candle Overview</h5>
+                        <dl className="report-trade-drawer__overview">
+                          <div><dt>Body ATR</dt><dd>{selectedLtfCandleMetrics?.bodyAtr?.toFixed(2) ?? '—'}</dd></div>
+                          <div><dt>Body Ratio</dt><dd>{selectedLtfCandleMetrics?.bodyRatio.toFixed(2) ?? '—'}</dd></div>
+                          <div><dt>Close Pos</dt><dd>{selectedLtfCandleMetrics?.closePos.toFixed(2) ?? '—'}</dd></div>
+                        </dl>
+                      </section>
+                      {ltfStructureNotesError && (
+                        <p className="report-explorer__note-error" role="alert">
+                          Could not load market structure note status: {ltfStructureNotesError}
+                        </p>
+                      )}
+                      {selectedLtfStructureNoteId && (
+                        <TradeNotes
+                          key={selectedLtfStructureNoteId}
+                          tradeId={selectedLtfStructureNoteId}
+                          title="Market Structure Notes"
+                          onHasNoteChange={(hasNote, priority) => {
+                            setLtfStructureNotes((current) => {
+                              const next = new Map(current ?? []);
+                              if (hasNote) next.set(selectedLtfStructureNoteId, priority);
+                              else next.delete(selectedLtfStructureNoteId);
+                              return next;
+                            });
+                          }}
+                        />
+                      )}
+                    </div>
+                  </aside>
+                )}
+                </div>
               ) : (
                 <p className="report-ltf-explorer__message">Select a Market Structure HTF row to view its LTF structures.</p>
               )}

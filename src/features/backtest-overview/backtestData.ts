@@ -1,5 +1,4 @@
 import type {
-  CandlestickData,
   SeriesMarker,
   Time,
   UTCTimestamp,
@@ -26,6 +25,8 @@ interface BacktestCandle {
   low: number;
   close: number;
   volume?: number;
+  body_ratio?: number;
+  close_pos?: number;
 }
 
 function parseGeneratedAt(source: string): string {
@@ -331,6 +332,10 @@ function isBacktestCandle(value: unknown): value is BacktestCandle {
     (field) => typeof value[field] === 'number' && Number.isFinite(value[field]),
   ) && (value.volume === undefined || (
     typeof value.volume === 'number' && Number.isFinite(value.volume) && value.volume >= 0
+  )) && (value.body_ratio === undefined || (
+    typeof value.body_ratio === 'number' && Number.isFinite(value.body_ratio)
+  )) && (value.close_pos === undefined || (
+    typeof value.close_pos === 'number' && Number.isFinite(value.close_pos)
   ));
 }
 
@@ -356,13 +361,15 @@ function parseCandles(source: string): CandleData[] {
 
   return candles
     .sort((left, right) => left.time - right.time)
-    .map(({ time, open, high, low, close, volume }) => ({
+    .map(({ time, open, high, low, close, volume, body_ratio, close_pos }) => ({
       time: time as UTCTimestamp,
       open,
       high,
       low,
       close,
       ...(volume === undefined ? {} : { volume }),
+      ...(body_ratio === undefined ? {} : { bodyRatio: body_ratio }),
+      ...(close_pos === undefined ? {} : { closePos: close_pos }),
     }));
 }
 
@@ -603,7 +610,7 @@ function parseTrades(source: string): BacktestTrade[] {
 
 export async function loadBacktestCandles(
   timeframeMode: TimeframeMode,
-): Promise<CandlestickData<Time>[]> {
+): Promise<CandleData[]> {
   const response = await fetch(candleUrls[timeframeMode]);
   if (!response.ok) {
     throw new Error(

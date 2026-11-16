@@ -30,8 +30,9 @@ export function getMarketStructureNoteId(
   symbol: string,
   marketStructureNumber: number,
   marketStructureTime: number,
+  timeframe: 'htf' | 'ltf' = 'htf',
 ): string {
-  return `${symbol}:htf-market-structure:${marketStructureNumber}:${marketStructureTime}`;
+  return `${symbol}:${timeframe}-market-structure:${marketStructureNumber}:${marketStructureTime}`;
 }
 
 let databasePromise: Promise<IDBDatabase> | null = null;

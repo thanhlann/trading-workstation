@@ -152,6 +152,7 @@ export function ChartPanelView({
               <span>Range: <strong>{formatValue(selectedCandle.data.range)}</strong></span>
               <span>Range atr: <strong>{formatValue(selectedCandle.data.rangeAtr)}</strong></span>
               <span>Volume: <strong>{formatValue(selectedCandle.data.volume)}</strong></span>
+              <span>Body ATR: <strong>{formatValue(selectedCandle.data.bodyAtr)}</strong></span>
             </div>
             <footer className="candle-tooltip__indicators">
               <span>ATR: <strong>{formatValue(selectedCandle.data.atr)}</strong></span>

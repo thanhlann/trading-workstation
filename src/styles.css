@@ -350,7 +350,8 @@ button { cursor: pointer; }
 .report-explorer__filter--priority:hover { filter: brightness(1.2); }
 .report-explorer__filter--win.report-explorer__filter--active { border-color: #176345; color: #24c995; background: #12392e; }
 .report-explorer__filter--loss.report-explorer__filter--active { border-color: #7a3540; color: #f06c79; background: #3a2028; }
-.report-ltf-explorer { display: grid; flex: 0 0 auto; min-height: 260px; align-content: start; gap: 12px; padding: 14px; border: 1px solid #26364b; border-radius: 8px; background: #101a29; }
+.report-ltf-explorer { display: grid; flex: 1; min-height: 260px; grid-template-rows: auto minmax(0, 1fr) auto; align-content: stretch; gap: 12px; padding: 14px; border: 1px solid #26364b; border-radius: 8px; background: #101a29; }
+.report-ltf-explorer--ltf-selected { flex: 0 0 auto; min-height: 0; grid-template-rows: auto auto auto; }
 .report-ltf-explorer__searches { display: flex; flex-wrap: wrap; gap: 8px; }
 .report-ltf-explorer__searches .report-explorer__search { width: min(100%, 220px); max-width: 220px; flex: 0 1 220px; }
 .report-ltf-explorer__list > .report-explorer__search { width: min(100%, 220px); }
@@ -412,7 +413,13 @@ button { cursor: pointer; }
 .report-ltf-explorer__actions-divider { height: 1px; margin: 4px 2px; background: #26364b; }
 .report-explorer__content { display: flex; min-width: 0; min-height: 0; overflow: hidden; }
 .report-explorer__content--details-open { gap: 12px; }
-.report-htf-explorer__content--details-open { height: 281px; align-items: stretch; }
+.report-htf-explorer__content { height: 100%; min-height: 0; }
+.report-htf-explorer__content > .report-ltf-explorer__list { flex: 1; min-width: 0; min-height: 0; grid-template-rows: auto minmax(0, 1fr); }
+.report-htf-explorer__content .report-ltf-explorer__table-wrap { height: 100%; min-height: 0; max-height: none; }
+.report-htf-explorer__content--details-open { height: 100%; min-height: 0; align-items: stretch; }
+.report-ltf-explorer__content > .report-ltf-explorer__list { flex: 1; align-content: start; }
+.report-ltf-explorer__content--details-open { height: auto; align-items: stretch; }
+.report-ltf-explorer__content .report-ltf-explorer__table-wrap { min-height: 280px; max-height: 280px; }
 .report-trade-table-wrap { flex: 1; min-width: 0; min-height: 0; overflow: auto; border-top: 1px solid #26364b; border-bottom: 1px solid #26364b; }
 .report-trade-table { width: 100%; min-width: 560px; border-collapse: collapse; table-layout: fixed; font-size: 10px; }
 .report-trade-table th { position: sticky; top: 0; z-index: 1; padding: 8px 7px; color: #aab9cb; background: #101a29; text-align: left; font-size: 9px; }

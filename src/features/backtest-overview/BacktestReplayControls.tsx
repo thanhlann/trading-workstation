@@ -11,6 +11,7 @@ import {
 import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
 import { SYSTEM_CONFIG } from '../../config/system';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
+import type { CandleStructureMetrics } from '../chart/candleTooltip';
 import { parseBacktestTimeRange } from './backtestTimeRange';
 import type { BacktestSetup, BacktestTrade } from './backtestData';
 import type { MarketStateOverlay } from '../chart/marketState.types';
@@ -42,6 +43,7 @@ const TRADE_DATE_TIME_FORMAT = new Intl.DateTimeFormat('en-GB', {
 interface BacktestReplayControlsProps {
   marketStructureNoteId: string | null;
   marketStructureDetail: MarketStateOverlay['marketStructure'] | null;
+  marketStructureCandleMetrics: CandleStructureMetrics | null;
   marketStructureSetup: Pick<BacktestSetup, 'number' | 'endTime'> | null;
   marketStructureNumber: number | null;
   marketStructureCount: number;
@@ -98,6 +100,7 @@ function formatTradeDate(value: number, includeTime = false): string {
 export function BacktestReplayControls({
   marketStructureNoteId,
   marketStructureDetail,
+  marketStructureCandleMetrics,
   marketStructureSetup,
   marketStructureNumber,
   marketStructureCount,
@@ -571,7 +574,7 @@ export function BacktestReplayControls({
         </div>
       </div>
 
-      {timeframe === 'htf' && marketStructureNoteId && marketStructureDetail && (
+      {marketStructureNoteId && marketStructureDetail && (
         <>
           <section
             className="backtest-replay__trade-card backtest-replay__market-structure-detail"
@@ -582,8 +585,8 @@ export function BacktestReplayControls({
             </div>
             <div className="backtest-replay__trade-grid">
               <div className="backtest-replay__trade-metric">
-                <span>HTF MSID</span>
-                <strong>HTF-{String(marketStructureDetail.number).padStart(2, '0')}</strong>
+                <span>{timeframe.toUpperCase()} MSID</span>
+                <strong>{timeframe.toUpperCase()}-{String(marketStructureDetail.number).padStart(2, '0')}</strong>
               </div>
               <div className="backtest-replay__trade-metric">
                 <span>Setup ID</span>
@@ -626,6 +629,18 @@ export function BacktestReplayControls({
                       ? 'Active'
                       : formatTradeDate(marketStructureSetup.endTime, true)}
                 </strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Body ATR</span>
+                <strong>{marketStructureCandleMetrics?.bodyAtr?.toFixed(2) ?? '—'}</strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Body Ratio</span>
+                <strong>{marketStructureCandleMetrics?.bodyRatio.toFixed(2) ?? '—'}</strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Close Pos</span>
+                <strong>{marketStructureCandleMetrics?.closePos.toFixed(2) ?? '—'}</strong>
               </div>
             </div>
           </section>

@@ -4,6 +4,7 @@ import { SYSTEM_CONFIG } from '../../config/system';
 import { CANDLE_SERIES_OPTIONS, getChartOptions } from '../chart/chartConfig';
 import { getCandle } from '../chart/chartData';
 import { ChartPanel } from '../chart/ChartPanel';
+import { getCandleStructureMetrics } from '../chart/candleTooltip';
 import {
   loadBacktestCandles,
   loadBacktestGeneratedAt,
@@ -18,7 +19,7 @@ import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { isWithinBacktestTimeRange, parseBacktestTimeRange } from './backtestTimeRange';
 import { getMarketStructureNoteId } from './tradeNotesStorage';
 import type { MarketStateOverlay, TradeChartOverlay } from '../chart/marketState.types';
-import type { CandlestickData, Time, UTCTimestamp } from 'lightweight-charts';
+import type { UTCTimestamp } from 'lightweight-charts';
 
 const BACKTEST_CANDLE_SERIES_OPTIONS = {
   ...CANDLE_SERIES_OPTIONS,
@@ -88,7 +89,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
   const setBacktestTimeRange = useWorkspaceStore((state) => state.setBacktestTimeRange);
   const setBacktestTimeframe = useWorkspaceStore((state) => state.setBacktestTimeframe);
   const timeframe = timeframeMode === 'htf' ? '1h' : '5m';
-  const [candlesData, setCandlesData] = useState<CandlestickData<Time>[]>([]);
+  const [candlesData, setCandlesData] = useState<Awaited<ReturnType<typeof loadBacktestCandles>>>([]);
   const [marketStates, setMarketStates] = useState<Awaited<ReturnType<typeof loadBacktestMarketStates>>>([]);
   const [higherTimeframeMarketStates, setHigherTimeframeMarketStates] = useState<Awaited<ReturnType<typeof loadBacktestMarketStates>>>([]);
   const [setups, setSetups] = useState<Awaited<ReturnType<typeof loadBacktestSetups>>>([]);
@@ -264,6 +265,13 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
   const rangeFilteredTrades = filteredTrades.filter((trade) => isInTimeRange(trade.time));
   const ltfMarketStatesByTime = new Map(
     marketStates.map((state) => [Number(state.marketStructure.time), state]),
+  );
+  const candleMetricsByTime = useMemo(
+    () => new Map(candlesData.map((candle, index) => [
+      Number(candle.time),
+      getCandleStructureMetrics(candlesData, index),
+    ])),
+    [candlesData],
   );
   const htfMarketStatesByTime = new Map(
     higherTimeframeMarketStates.map((state) => [Number(state.marketStructure.time), state]),
@@ -472,9 +480,11 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     timeframeMode,
     unzoomedHtfMarketStructure,
   ]);
-  const currentMarketStructureSetup = currentMarketState
-    ? setupsByTime.get(Number(currentMarketState.marketStructure.time)) ?? null
-    : null;
+  const currentMarketStructureSetup = timeframeMode === 'htf'
+    ? currentMarketState
+      ? setupsByTime.get(Number(currentMarketState.marketStructure.time)) ?? null
+      : null
+    : selectedSetup ?? null;
   const currentTradeIndex = currentMarketState
     ? rangeFilteredTrades.findIndex(
       (trade) => trade.ltf.marketStructure.time === Number(currentMarketState.marketStructure.time),
@@ -644,17 +654,19 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
       </section>
       <aside className="event-panel" aria-label={SYSTEM_CONFIG.ui.eventPanel.filterTitle}>
         <BacktestReplayControls
-          marketStructureNoteId={timeframeMode === 'htf' && currentMarketState
+          marketStructureNoteId={currentMarketState
             ? getMarketStructureNoteId(
               symbol,
               currentMarketState.marketStructure.number,
               Number(currentMarketState.marketStructure.time),
+              timeframeMode,
             )
             : null}
-          marketStructureDetail={timeframeMode === 'htf'
-            ? currentMarketState?.marketStructure ?? null
+          marketStructureDetail={currentMarketState?.marketStructure ?? null}
+          marketStructureCandleMetrics={currentMarketState
+            ? candleMetricsByTime.get(Number(currentMarketState.marketStructure.time)) ?? null
             : null}
-          marketStructureSetup={timeframeMode === 'htf' ? currentMarketStructureSetup : null}
+          marketStructureSetup={currentMarketStructureSetup}
           marketStructureCount={visibleMarketStates.length}
           marketStructureNumber={currentMarketState?.marketStructure.number ?? null}
           tradeProgressNumber={tradeProgressNumber}

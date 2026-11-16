@@ -2,6 +2,8 @@ import type { CandlestickData, Time } from 'lightweight-charts';
 
 export interface CandleData extends CandlestickData<Time> {
   volume?: number;
+  bodyRatio?: number;
+  closePos?: number;
 }
 
 export interface Candle {
@@ -22,6 +24,8 @@ export interface CandleTooltipData {
   lowerWick: number;
   body: number;
   bodyRatio: number;
+  bodyAtr: number | null;
+  closePos: number;
   range: number;
   rangeAtr: number | null;
   volume: number | null;
