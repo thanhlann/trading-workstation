@@ -41,6 +41,7 @@ interface ChartPanelProps {
   marketState?: MarketStateOverlay | null;
   additionalMarketState?: MarketStateOverlay | null;
   focusAdditionalMarketState?: boolean;
+  fitMarketStateRange?: boolean;
   tradeOverlay?: TradeChartOverlay | null;
 }
 
@@ -272,6 +273,7 @@ export function ChartPanel({
   marketState,
   additionalMarketState,
   focusAdditionalMarketState = false,
+  fitMarketStateRange = true,
   tradeOverlay,
 }: ChartPanelProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -598,10 +600,14 @@ export function ChartPanel({
     const rangeMarketState = focusAdditionalMarketState
       ? additionalMarketState ?? marketState
       : marketState;
-    const marketStateVisibleRange = rangeMarketState
+    const marketStateVisibleRange = fitMarketStateRange && rangeMarketState
       ? getMarketStateVisibleRange(rangeMarketState, candlesData, !focusAdditionalMarketState)
       : null;
     if (marketStateVisibleRange) marketStateRangeRef.current = marketStateVisibleRange;
+    else if (!fitMarketStateRange) {
+      marketStateRangeRef.current = null;
+      if (hasInitialDataRef.current) chart.timeScale().fitContent();
+    }
 
     if (!tradeOverlay) {
       const visiblePois = drawings
@@ -639,6 +645,7 @@ export function ChartPanel({
     additionalMarketState,
     candlesData,
     focusAdditionalMarketState,
+    fitMarketStateRange,
     keepDraw,
     marketState,
     marketStateTimeframe,

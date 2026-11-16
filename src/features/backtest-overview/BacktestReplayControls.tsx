@@ -71,6 +71,7 @@ interface BacktestReplayControlsProps {
   };
   selectedTrade: BacktestTrade | null;
   selectedTradeExitType: 'TP' | 'SL' | null;
+  onOpenTradeSetup: () => void;
 }
 
 function formatPrice(value: number): string {
@@ -117,6 +118,7 @@ export function BacktestReplayControls({
   tradeSummary,
   selectedTrade,
   selectedTradeExitType,
+  onOpenTradeSetup,
 }: BacktestReplayControlsProps) {
   const [searchError, setSearchError] = useState('');
   const [setupDropdownOpen, setSetupDropdownOpen] = useState(false);
@@ -712,7 +714,17 @@ export function BacktestReplayControls({
                 <div className="backtest-replay__trade-grid">
                   <div className="backtest-replay__trade-metric">
                     <span>{SYSTEM_CONFIG.ui.backtestReplay.setupLabel}</span>
-                    <strong>#{selectedTrade.setup.number}</strong>
+                    <strong>
+                      <button
+                        type="button"
+                        className="report-trade-id"
+                        aria-label={`Open Setup ${selectedTrade.setup.number} in HTF backtest`}
+                        title="Open setup in HTF"
+                        onClick={onOpenTradeSetup}
+                      >
+                        S-{String(selectedTrade.setup.number).padStart(3, '0')}
+                      </button>
+                    </strong>
                   </div>
                   <div className="backtest-replay__trade-metric">
                     <span>{SYSTEM_CONFIG.ui.backtestReplay.entryLabel}</span>

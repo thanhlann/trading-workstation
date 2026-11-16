@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { MarketSymbol } from '../../config/marketSymbols';
 import { SYSTEM_CONFIG } from '../../config/system';
 import { CANDLE_SERIES_OPTIONS, getChartOptions } from '../chart/chartConfig';
@@ -50,9 +50,29 @@ function getTradeExitType(trade: BacktestTrade): 'TP' | 'SL' {
 }
 
 type QuickFilter = 'all' | 'setup';
+type BacktestTimeframeMode = 'htf' | 'ltf';
+
+interface BacktestReplayData {
+  candles: Awaited<ReturnType<typeof loadBacktestCandles>>;
+  timestamp: Awaited<ReturnType<typeof loadBacktestGeneratedAt>>;
+  marketStates: Awaited<ReturnType<typeof loadBacktestMarketStates>>;
+  higherTimeframeMarketStates: Awaited<ReturnType<typeof loadBacktestMarketStates>>;
+  swings: Awaited<ReturnType<typeof loadBacktestSwings>>;
+  setups: Awaited<ReturnType<typeof loadBacktestSetups>>;
+  trades: Awaited<ReturnType<typeof loadBacktestTrades>>;
+}
 
 interface BacktestOverviewProps {
   symbol: MarketSymbol;
+}
+
+interface LtfReplayContext {
+  replayIndex: number;
+  selectedSetupId: string;
+  tradeFilterActive: boolean;
+  tradeSetupFilterId: string;
+  timeRangeFrom: string;
+  timeRangeTo: string;
 }
 
 export function BacktestOverview({ symbol }: BacktestOverviewProps) {
@@ -60,10 +80,13 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
   const timeRangeFrom = useWorkspaceStore((state) => state.backtestTimeRangeFrom);
   const timeRangeTo = useWorkspaceStore((state) => state.backtestTimeRangeTo);
   const replayIndex = useWorkspaceStore((state) => state.replayIndex);
+  const replayLastIndex = useWorkspaceStore((state) => state.replayLastIndex);
   const setReplayIndex = useWorkspaceStore((state) => state.setReplayIndex);
   const setReplayLastIndex = useWorkspaceStore((state) => state.setReplayLastIndex);
   const navigationTarget = useWorkspaceStore((state) => state.backtestNavigationTarget);
   const setBacktestNavigationTarget = useWorkspaceStore((state) => state.setBacktestNavigationTarget);
+  const setBacktestTimeRange = useWorkspaceStore((state) => state.setBacktestTimeRange);
+  const setBacktestTimeframe = useWorkspaceStore((state) => state.setBacktestTimeframe);
   const timeframe = timeframeMode === 'htf' ? '1h' : '5m';
   const [candlesData, setCandlesData] = useState<CandlestickData<Time>[]>([]);
   const [marketStates, setMarketStates] = useState<Awaited<ReturnType<typeof loadBacktestMarketStates>>>([]);
@@ -83,16 +106,121 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
   const [generatedAt, setGeneratedAt] = useState<string | null>(null);
   const [dataError, setDataError] = useState<string | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [loadedTimeframeMode, setLoadedTimeframeMode] = useState<'htf' | 'ltf' | null>(null);
+  const [unzoomedHtfMarketStructure, setUnzoomedHtfMarketStructure] = useState<{
+    symbol: MarketSymbol;
+    time: number;
+  } | null>(null);
+  const ltfReplayContextRef = useRef<LtfReplayContext | null>(null);
+  const restoreLtfContextPendingRef = useRef(false);
+  const restoredLtfFiltersRef = useRef(false);
+  const previousTimeframeModeRef = useRef(timeframeMode);
+  const loadedReplayDataRef = useRef<
+    Partial<Record<BacktestTimeframeMode, BacktestReplayData>>
+  >({});
+  const pendingReplayDataRef = useRef<
+    Partial<Record<BacktestTimeframeMode, Promise<BacktestReplayData>>>
+  >({});
+
+  useEffect(() => {
+    if (previousTimeframeModeRef.current !== timeframeMode) {
+      if (timeframeMode === 'ltf' && ltfReplayContextRef.current !== null) {
+        restoreLtfContextPendingRef.current = true;
+        restoredLtfFiltersRef.current = false;
+      }
+      previousTimeframeModeRef.current = timeframeMode;
+    }
+  }, [timeframeMode]);
+
+  useEffect(() => {
+    if (timeframeMode !== 'ltf' || restoreLtfContextPendingRef.current) return;
+    ltfReplayContextRef.current = {
+      replayIndex,
+      selectedSetupId,
+      tradeFilterActive,
+      tradeSetupFilterId,
+      timeRangeFrom,
+      timeRangeTo,
+    };
+  }, [
+    replayIndex,
+    selectedSetupId,
+    timeframeMode,
+    timeRangeFrom,
+    timeRangeTo,
+    tradeFilterActive,
+    tradeSetupFilterId,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
+
+    const applyReplayData = (data: BacktestReplayData) => {
+      setCandlesData(data.candles);
+      setGeneratedAt(data.timestamp);
+      setMarketStates(data.marketStates);
+      setHigherTimeframeMarketStates(data.higherTimeframeMarketStates);
+      setSetups(data.setups);
+      setTrades(data.trades);
+      setSwingMarkers(data.swings);
+      setDataError(null);
+      setDataLoaded(true);
+      setLoadedTimeframeMode(timeframeMode);
+    };
+
+    const cachedData = loadedReplayDataRef.current[timeframeMode];
+    if (cachedData) {
+      applyReplayData(cachedData);
+      return;
+    }
+
+    let dataPromise = pendingReplayDataRef.current[timeframeMode];
+    if (!dataPromise) {
+      const cachedHtfData = loadedReplayDataRef.current.htf;
+      const cachedLtfData = loadedReplayDataRef.current.ltf;
+      const cachedHtfMarketStates = cachedHtfData?.marketStates
+        ?? cachedLtfData?.higherTimeframeMarketStates;
+      const cachedSetups = cachedHtfData?.setups ?? cachedLtfData?.setups;
+      const cachedTrades = cachedLtfData?.trades;
+      const htfMarketStatesPromise = cachedHtfMarketStates
+        ? Promise.resolve(cachedHtfMarketStates)
+        : loadBacktestMarketStates('htf');
+      const marketStatesPromise = timeframeMode === 'htf'
+        ? htfMarketStatesPromise
+        : loadBacktestMarketStates('ltf');
+
+      dataPromise = Promise.all([
+        loadBacktestCandles(timeframeMode),
+        loadBacktestGeneratedAt(timeframeMode),
+        marketStatesPromise,
+        timeframeMode === 'ltf'
+          ? htfMarketStatesPromise
+          : marketStatesPromise,
+        loadBacktestSwings(timeframeMode),
+        cachedSetups ? Promise.resolve(cachedSetups) : loadBacktestSetups(),
+        timeframeMode === 'ltf'
+          ? cachedTrades ? Promise.resolve(cachedTrades) : loadBacktestTrades()
+          : Promise.resolve(cachedTrades ?? []),
+      ]).then(
+        ([candles, timestamp, states, loadedHigherTimeframeStates, swings, loadedSetups, loadedTrades]) => ({
+          candles,
+          timestamp,
+          marketStates: states,
+          higherTimeframeMarketStates: loadedHigherTimeframeStates,
+          swings,
+          setups: loadedSetups,
+          trades: loadedTrades,
+        }),
+      );
+      pendingReplayDataRef.current[timeframeMode] = dataPromise;
+    }
+
     setCandlesData([]);
     setMarketStates([]);
     setHigherTimeframeMarketStates([]);
     setSetups([]);
     setQuickFilter('all');
     setTrades([]);
-    if (navigationTarget === null) setSelectedSetupId('');
     setTradeSetupFilterId('');
     setTradeFilterActive(timeframeMode === 'ltf' && (
       navigationTarget === null || navigationTarget.type === 'trade'
@@ -101,32 +229,17 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     setGeneratedAt(null);
     setDataError(null);
     setDataLoaded(false);
+    setLoadedTimeframeMode(null);
     setReplayLastIndex(-1);
 
-    Promise.all([
-      loadBacktestCandles(timeframeMode),
-      loadBacktestGeneratedAt(timeframeMode),
-      loadBacktestMarketStates(timeframeMode),
-      timeframeMode === 'ltf' ? loadBacktestMarketStates('htf') : Promise.resolve([]),
-      loadBacktestSwings(timeframeMode),
-      loadBacktestSetups(),
-      timeframeMode === 'ltf' ? loadBacktestTrades() : Promise.resolve([]),
-    ]).then(
-      ([candles, timestamp, states, loadedHigherTimeframeStates, swings, loadedSetups, loadedTrades]) => {
-        if (!cancelled) {
-          setCandlesData(candles);
-          setGeneratedAt(timestamp);
-          setMarketStates(states);
-          setHigherTimeframeMarketStates(
-            timeframeMode === 'htf' ? states : loadedHigherTimeframeStates,
-          );
-          setSetups(loadedSetups);
-          setTrades(loadedTrades);
-          setSwingMarkers(swings);
-          setDataLoaded(true);
-        }
+    dataPromise.then(
+      (data) => {
+        loadedReplayDataRef.current[timeframeMode] = data;
+        delete pendingReplayDataRef.current[timeframeMode];
+        if (!cancelled) applyReplayData(data);
       },
       (error: unknown) => {
+        delete pendingReplayDataRef.current[timeframeMode];
         if (!cancelled) {
           setDataError(error instanceof Error ? error.message : String(error));
         }
@@ -195,10 +308,65 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
 
   useEffect(() => {
     setReplayLastIndex(visibleMarketStates.length - 1);
-  }, [setReplayLastIndex, visibleMarketStates.length]);
+  }, [setReplayLastIndex, timeframeMode, visibleMarketStates.length]);
 
   useEffect(() => {
-    if (navigationTarget === null || !dataLoaded) return;
+    const context = ltfReplayContextRef.current;
+    if (
+      !restoreLtfContextPendingRef.current
+      || context === null
+      || timeframeMode !== 'ltf'
+      || !dataLoaded
+      || loadedTimeframeMode !== 'ltf'
+    ) return;
+
+    if (!restoredLtfFiltersRef.current) {
+      setSelectedSetupId(context.selectedSetupId);
+      setTradeFilterActive(context.tradeFilterActive);
+      setTradeSetupFilterId(context.tradeSetupFilterId);
+      setBacktestTimeRange({
+        backtestTimeRangeFrom: context.timeRangeFrom,
+        backtestTimeRangeTo: context.timeRangeTo,
+      });
+      restoredLtfFiltersRef.current = true;
+      return;
+    }
+
+    if (
+      selectedSetupId !== context.selectedSetupId
+      || tradeFilterActive !== context.tradeFilterActive
+      || tradeSetupFilterId !== context.tradeSetupFilterId
+      || timeRangeFrom !== context.timeRangeFrom
+      || timeRangeTo !== context.timeRangeTo
+      || replayLastIndex !== visibleMarketStates.length - 1
+    ) return;
+
+    setReplayIndex(context.replayIndex);
+    ltfReplayContextRef.current = null;
+    restoreLtfContextPendingRef.current = false;
+    restoredLtfFiltersRef.current = false;
+  }, [
+    dataLoaded,
+    loadedTimeframeMode,
+    replayLastIndex,
+    selectedSetupId,
+    setBacktestTimeRange,
+    setReplayIndex,
+    setSelectedSetupId,
+    timeRangeFrom,
+    timeRangeTo,
+    timeframeMode,
+    tradeFilterActive,
+    tradeSetupFilterId,
+    visibleMarketStates.length,
+  ]);
+
+  useEffect(() => {
+    if (
+      navigationTarget === null
+      || !dataLoaded
+      || loadedTimeframeMode !== timeframeMode
+    ) return;
     if (
       (navigationTarget.type === 'htfMarketStructure' && timeframeMode !== 'htf')
       || (navigationTarget.type !== 'htfMarketStructure' && timeframeMode !== 'ltf')
@@ -257,6 +425,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     setBacktestNavigationTarget(null);
   }, [
     dataLoaded,
+    loadedTimeframeMode,
     navigationTarget,
     setBacktestNavigationTarget,
     setReplayIndex,
@@ -280,6 +449,29 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     ? getCandle(visibleCandles, symbol)
     : null;
   const currentMarketState = visibleMarketStates[replayIndex] ?? null;
+  const isPreservingHtfChartContext = timeframeMode === 'htf'
+    && currentMarketState !== null
+    && unzoomedHtfMarketStructure?.symbol === symbol
+    && unzoomedHtfMarketStructure.time === Number(currentMarketState.marketStructure.time);
+  useEffect(() => {
+    if (unzoomedHtfMarketStructure === null || navigationTarget !== null) return;
+    if (
+      timeframeMode !== 'htf'
+      || unzoomedHtfMarketStructure.symbol !== symbol
+      || (
+        currentMarketState !== null
+        && unzoomedHtfMarketStructure.time !== Number(currentMarketState.marketStructure.time)
+      )
+    ) {
+      setUnzoomedHtfMarketStructure(null);
+    }
+  }, [
+    currentMarketState?.marketStructure.time,
+    navigationTarget,
+    symbol,
+    timeframeMode,
+    unzoomedHtfMarketStructure,
+  ]);
   const currentMarketStructureSetup = currentMarketState
     ? setupsByTime.get(Number(currentMarketState.marketStructure.time)) ?? null
     : null;
@@ -304,6 +496,28 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     if (tradeFilterActive) {
       setTradeSetupFilterId(setupId);
     }
+  };
+  const handleOpenTradeSetup = () => {
+    if (!currentTradeEntry) return;
+    ltfReplayContextRef.current = {
+      replayIndex,
+      selectedSetupId,
+      tradeFilterActive,
+      tradeSetupFilterId,
+      timeRangeFrom,
+      timeRangeTo,
+    };
+    const marketStructure = currentTradeEntry.htfMarketState.marketStructure;
+    const marketStructureTime = Number(marketStructure.time);
+    setUnzoomedHtfMarketStructure({ symbol, time: marketStructureTime });
+    setBacktestNavigationTarget({
+      type: 'htfMarketStructure',
+      marketStructureNumber: marketStructure.number,
+      marketStructureTime,
+    });
+    setBacktestTimeRange({ backtestTimeRangeFrom: '', backtestTimeRangeTo: '' });
+    setBacktestTimeframe('htf');
+    setReplayIndex(0);
   };
   const currentTradeTime = currentTradeEntry?.trade.ltf.marketStructure.time
     ?? currentMarketState?.marketStructure.time
@@ -421,6 +635,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
             && Boolean(selectedSetupId)
             && !currentTradeEntry
           }
+          fitMarketStateRange={!isPreservingHtfChartContext}
           tradeOverlay={tradeOverlay}
           toolbarContent={chartError
             ? <span className="chart-status" role="alert">{chartError}</span>
@@ -462,6 +677,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
           tradeSummary={tradeSummary}
           selectedTrade={selectedTrade}
           selectedTradeExitType={selectedTradeExitType}
+          onOpenTradeSetup={handleOpenTradeSetup}
         />
       </aside>
     </div>
