@@ -12,7 +12,8 @@ import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent 
 import { SYSTEM_CONFIG } from '../../config/system';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { parseBacktestTimeRange } from './backtestTimeRange';
-import type { BacktestTrade } from './backtestData';
+import type { BacktestSetup, BacktestTrade } from './backtestData';
+import type { MarketStateOverlay } from '../chart/marketState.types';
 import { TradeNotes } from './TradeNotes';
 import { getTradeNoteId } from './tradeNotesStorage';
 
@@ -39,6 +40,9 @@ const TRADE_DATE_TIME_FORMAT = new Intl.DateTimeFormat('en-GB', {
 });
 
 interface BacktestReplayControlsProps {
+  marketStructureNoteId: string | null;
+  marketStructureDetail: MarketStateOverlay['marketStructure'] | null;
+  marketStructureSetup: Pick<BacktestSetup, 'number' | 'endTime'> | null;
   marketStructureNumber: number | null;
   marketStructureCount: number;
   tradeProgressNumber: number | null;
@@ -91,6 +95,9 @@ function formatTradeDate(value: number, includeTime = false): string {
 }
 
 export function BacktestReplayControls({
+  marketStructureNoteId,
+  marketStructureDetail,
+  marketStructureSetup,
   marketStructureNumber,
   marketStructureCount,
   tradeProgressNumber,
@@ -561,6 +568,72 @@ export function BacktestReplayControls({
           ))}
         </div>
       </div>
+
+      {timeframe === 'htf' && marketStructureNoteId && marketStructureDetail && (
+        <>
+          <section
+            className="backtest-replay__trade-card backtest-replay__market-structure-detail"
+            aria-label="Market Structure Detail"
+          >
+            <div className="backtest-replay__trade-card-heading">
+              <h3 className="backtest-replay__trade-card-title">Market Structure Detail</h3>
+            </div>
+            <div className="backtest-replay__trade-grid">
+              <div className="backtest-replay__trade-metric">
+                <span>HTF MSID</span>
+                <strong>HTF-{String(marketStructureDetail.number).padStart(2, '0')}</strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Setup ID</span>
+                <strong>
+                  {marketStructureSetup
+                    ? `S-${String(marketStructureSetup.number).padStart(3, '0')}`
+                    : '—'}
+                </strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Event</span>
+                <strong>{marketStructureDetail.event.toUpperCase()}</strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Direction</span>
+                <strong className={marketStructureDetail.bias === 'BULLISH' ? 'positive' : 'negative'}>
+                  {marketStructureDetail.bias === 'BULLISH' ? 'Bullish' : 'Bearish'}
+                </strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Score</span>
+                <strong>{marketStructureDetail.score.toFixed(2)}</strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Event Price</span>
+                <strong>
+                  {marketStructureDetail.eventPrice.type.toUpperCase()} {formatPrice(marketStructureDetail.eventPrice.price)}
+                </strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>Created</span>
+                <strong>{formatTradeDate(Number(marketStructureDetail.time), true)}</strong>
+              </div>
+              <div className="backtest-replay__trade-metric">
+                <span>End time</span>
+                <strong>
+                  {marketStructureSetup === null
+                    ? '—'
+                    : marketStructureSetup.endTime === null
+                      ? 'Active'
+                      : formatTradeDate(marketStructureSetup.endTime, true)}
+                </strong>
+              </div>
+            </div>
+          </section>
+          <TradeNotes
+            key={marketStructureNoteId}
+            tradeId={marketStructureNoteId}
+            title="Market Structure Notes"
+          />
+        </>
+      )}
 
       {isTradeSource && (
         <section className="backtest-replay__trade-info" aria-label={SYSTEM_CONFIG.ui.backtestReplay.tradeDetailsTitle}>

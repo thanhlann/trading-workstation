@@ -26,6 +26,14 @@ export function getTradeNoteId(
   return `${symbol}:${tradeNumber}:${tradeTime}`;
 }
 
+export function getMarketStructureNoteId(
+  symbol: string,
+  marketStructureNumber: number,
+  marketStructureTime: number,
+): string {
+  return `${symbol}:htf-market-structure:${marketStructureNumber}:${marketStructureTime}`;
+}
+
 let databasePromise: Promise<IDBDatabase> | null = null;
 
 function openDatabase(): Promise<IDBDatabase> {

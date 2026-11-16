@@ -16,7 +16,8 @@ import type { BacktestTrade, BacktestTradePoi } from './backtestData';
 import { BacktestReplayControls } from './BacktestReplayControls';
 import { useWorkspaceStore } from '../../stores/workspaceStore';
 import { isWithinBacktestTimeRange, parseBacktestTimeRange } from './backtestTimeRange';
-import type { TradeChartOverlay } from '../chart/marketState.types';
+import { getMarketStructureNoteId } from './tradeNotesStorage';
+import type { MarketStateOverlay, TradeChartOverlay } from '../chart/marketState.types';
 import type { CandlestickData, Time, UTCTimestamp } from 'lightweight-charts';
 
 const BACKTEST_CANDLE_SERIES_OPTIONS = {
@@ -155,6 +156,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     higherTimeframeMarketStates.map((state) => [Number(state.marketStructure.time), state]),
   );
   const setupsById = new Map(setups.map((setup) => [setup.id, setup]));
+  const setupsByTime = new Map(setups.map((setup) => [setup.time, setup]));
   const selectedSetup = setups.find((setup) => setup.id === selectedSetupId);
   const selectedSetupMarketState = selectedSetup
     ? htfMarketStatesByTime.get(selectedSetup.time) ?? null
@@ -196,9 +198,17 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
   }, [setReplayLastIndex, visibleMarketStates.length]);
 
   useEffect(() => {
-    if (navigationTarget === null || timeframeMode !== 'ltf' || !dataLoaded) return;
+    if (navigationTarget === null || !dataLoaded) return;
+    if (
+      (navigationTarget.type === 'htfMarketStructure' && timeframeMode !== 'htf')
+      || (navigationTarget.type !== 'htfMarketStructure' && timeframeMode !== 'ltf')
+    ) return;
 
     setDataError(null);
+    if (navigationTarget.type === 'htfMarketStructure' && quickFilter !== 'all') {
+      setQuickFilter('all');
+      return;
+    }
     if (
       navigationTarget.type === 'trade'
       && (!tradeFilterActive || tradeSetupFilterId !== navigationTarget.setupId)
@@ -212,7 +222,10 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
       setTradeSetupFilterId('');
       return;
     }
-    if (selectedSetupId !== navigationTarget.setupId) {
+    if (
+      navigationTarget.type !== 'htfMarketStructure'
+      && selectedSetupId !== navigationTarget.setupId
+    ) {
       setSelectedSetupId(navigationTarget.setupId);
       return;
     }
@@ -230,12 +243,16 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     if (targetIndex < 0) {
       setDataError(navigationTarget.type === 'trade'
         ? `Trade ${navigationTarget.tradeNumber} was not found in the LTF replay data.`
-        : `LTF market structure ${navigationTarget.marketStructureNumber} was not found for setup ${navigationTarget.setupId}.`);
+        : navigationTarget.type === 'marketStructure'
+          ? `LTF market structure ${navigationTarget.marketStructureNumber} was not found for setup ${navigationTarget.setupId}.`
+          : `HTF market structure ${navigationTarget.marketStructureNumber} was not found in the HTF replay data.`);
       setBacktestNavigationTarget(null);
       return;
     }
 
-    setSelectedSetupId(navigationTarget.setupId);
+    if (navigationTarget.type !== 'htfMarketStructure') {
+      setSelectedSetupId(navigationTarget.setupId);
+    }
     setReplayIndex(targetIndex);
     setBacktestNavigationTarget(null);
   }, [
@@ -246,6 +263,8 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     setSelectedSetupId,
     selectedSetupId,
     setTradeFilterActive,
+    quickFilter,
+    setQuickFilter,
     tradeFilterActive,
     setTradeSetupFilterId,
     tradeSetupFilterId,
@@ -261,6 +280,9 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     ? getCandle(visibleCandles, symbol)
     : null;
   const currentMarketState = visibleMarketStates[replayIndex] ?? null;
+  const currentMarketStructureSetup = currentMarketState
+    ? setupsByTime.get(Number(currentMarketState.marketStructure.time)) ?? null
+    : null;
   const currentTradeIndex = currentMarketState
     ? rangeFilteredTrades.findIndex(
       (trade) => trade.ltf.marketStructure.time === Number(currentMarketState.marketStructure.time),
@@ -407,6 +429,17 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
       </section>
       <aside className="event-panel" aria-label={SYSTEM_CONFIG.ui.eventPanel.filterTitle}>
         <BacktestReplayControls
+          marketStructureNoteId={timeframeMode === 'htf' && currentMarketState
+            ? getMarketStructureNoteId(
+              symbol,
+              currentMarketState.marketStructure.number,
+              Number(currentMarketState.marketStructure.time),
+            )
+            : null}
+          marketStructureDetail={timeframeMode === 'htf'
+            ? currentMarketState?.marketStructure ?? null
+            : null}
+          marketStructureSetup={timeframeMode === 'htf' ? currentMarketStructureSetup : null}
           marketStructureCount={visibleMarketStates.length}
           marketStructureNumber={currentMarketState?.marketStructure.number ?? null}
           tradeProgressNumber={tradeProgressNumber}

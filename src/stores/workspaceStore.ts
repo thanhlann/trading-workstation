@@ -11,6 +11,11 @@ export type { MarketSymbol } from '../config/marketSymbols';
 
 export type BacktestNavigationTarget =
   | {
+    type: 'htfMarketStructure';
+    marketStructureNumber: number;
+    marketStructureTime: number;
+  }
+  | {
     type: 'marketStructure';
     setupId: string;
     marketStructureNumber: number;

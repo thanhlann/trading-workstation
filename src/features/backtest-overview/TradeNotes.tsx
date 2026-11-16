@@ -21,6 +21,7 @@ export const TRADE_NOTE_PRIORITY_COLORS: Record<TradeNotePriority, string> = {
 
 interface TradeNotesProps {
   tradeId: string;
+  title?: string;
   onHasNoteChange?: (hasNote: boolean, priority: TradeNotePriority) => void;
 }
 
@@ -32,7 +33,7 @@ function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
+export function TradeNotes({ tradeId, title, onHasNoteChange }: TradeNotesProps) {
   const [note, setNote] = useState('');
   const [priority, setPriority] = useState<TradeNotePriority>('None');
   const [expanded, setExpanded] = useState(false);
@@ -52,6 +53,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
   const priorityId = useId();
   const dialogPriorityId = useId();
   const labels = SYSTEM_CONFIG.ui.backtestReplay;
+  const noteTitle = title ?? labels.tradeNotesTitle;
   const preview = note.trim() ? note : '';
 
   useEffect(() => {
@@ -204,7 +206,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
             ? { color: TRADE_NOTE_PRIORITY_COLORS[priority] }
             : undefined}
         >
-          {labels.tradeNotesTitle}
+          {noteTitle}
         </h3>
         <span
           className={`backtest-replay__trade-notes-status${status === 'error' ? ' backtest-replay__trade-notes-status--error' : ''}`}
@@ -253,7 +255,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
       >
         {renderPrioritySelect(priorityId)}
         <textarea
-          aria-label={labels.tradeNotesTitle}
+          aria-label={noteTitle}
           placeholder={labels.tradeNotesPlaceholder}
           value={note}
           rows={5}
@@ -283,7 +285,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
                   ? { color: TRADE_NOTE_PRIORITY_COLORS[priority] }
                   : undefined}
               >
-                {labels.tradeNotesTitle}
+                {noteTitle}
               </h3>
               <span
                 className={`backtest-replay__trade-notes-status${status === 'error' ? ' backtest-replay__trade-notes-status--error' : ''}`}
@@ -294,7 +296,7 @@ export function TradeNotes({ tradeId, onHasNoteChange }: TradeNotesProps) {
             </header>
             {renderPrioritySelect(dialogPriorityId)}
             <textarea
-              aria-label={labels.tradeNotesTitle}
+              aria-label={noteTitle}
               placeholder={labels.tradeNotesPlaceholder}
               value={note}
               rows={8}
