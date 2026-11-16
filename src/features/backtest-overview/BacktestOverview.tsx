@@ -144,8 +144,7 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
     .sort((left, right) => left.ltf.marketStructure.time - right.ltf.marketStructure.time);
   const parsedTimeRange = parseBacktestTimeRange(timeRangeFrom, timeRangeTo);
   const isInTimeRange = (timestampSeconds: number) => (
-    timeframeMode !== 'ltf'
-    || !parsedTimeRange.valid
+    !parsedTimeRange.valid
     || isWithinBacktestTimeRange(timestampSeconds, parsedTimeRange)
   );
   const rangeFilteredTrades = filteredTrades.filter((trade) => isInTimeRange(trade.time));
@@ -186,7 +185,10 @@ export function BacktestOverview({ symbol }: BacktestOverviewProps) {
       )
     ));
   const visibleMarketStates = quickFilter === 'setup' && timeframeMode === 'htf'
-    ? marketStates.filter((state) => setupTimes.has(Number(state.marketStructure.time)))
+    ? marketStates.filter((state) => (
+      isInTimeRange(Number(state.marketStructure.time))
+      && setupTimes.has(Number(state.marketStructure.time))
+    ))
     : tradeFilteredMarketStates;
 
   useEffect(() => {
