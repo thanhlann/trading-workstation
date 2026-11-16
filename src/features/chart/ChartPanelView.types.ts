@@ -23,6 +23,8 @@ export interface ChartPanelViewProps {
   onShowFVGChange: (show: boolean) => void;
   showOB: boolean;
   onShowOBChange: (show: boolean) => void;
+  keepDraw: boolean;
+  onKeepDrawChange: (keep: boolean) => void;
   expanded: boolean;
   onToggleExpanded: () => void;
   statusLabel: string;

@@ -44,6 +44,36 @@ interface ChartPanelProps {
   tradeOverlay?: TradeChartOverlay | null;
 }
 
+interface ChartDrawingSnapshot {
+  marketState: MarketStateOverlay | null;
+  additionalMarketState: MarketStateOverlay | null;
+  tradeOverlay: TradeChartOverlay | null;
+  marketStateTimeframe: 'htf' | 'ltf';
+}
+
+function getSnapshotPois(
+  snapshot: ChartDrawingSnapshot,
+): { poi: MarketStateOverlay['pois'][number]; isHtf: boolean }[] {
+  if (snapshot.tradeOverlay) {
+    const htfPois = snapshot.marketState?.pois
+      ?? (snapshot.tradeOverlay.htf.poi ? [snapshot.tradeOverlay.htf.poi] : []);
+    return [
+      ...htfPois.map((poi) => ({ poi, isHtf: true })),
+      ...(snapshot.tradeOverlay.ltf.poi
+        ? [{ poi: snapshot.tradeOverlay.ltf.poi, isHtf: false }]
+        : []),
+    ];
+  }
+
+  return [
+    ...(snapshot.marketState?.pois ?? []).map((poi) => ({
+      poi,
+      isHtf: false,
+    })),
+    ...(snapshot.additionalMarketState?.pois ?? []).map((poi) => ({ poi, isHtf: false })),
+  ];
+}
+
 function getPoiEndTime(
   poi: MarketStateOverlay['pois'][number],
   candles: CandleData[],
@@ -250,7 +280,8 @@ export function ChartPanel({
   const markersRef = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const marketStructureRef = useRef<ISeriesApi<'Line'> | null>(null);
   const additionalMarketStructureRef = useRef<ISeriesApi<'Line'> | null>(null);
-  const stopLossRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const marketStructureSeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
+  const stopLossSeriesRef = useRef<ISeriesApi<'Line'>[]>([]);
   const poiSeriesRef = useRef<ISeriesApi<'Baseline'>[]>([]);
   const marketStateRangeRef = useRef<{ from: Time; to: Time } | null>(null);
   const hasTradeRangeRef = useRef(false);
@@ -260,6 +291,9 @@ export function ChartPanel({
   const [showSwings, setShowSwings] = useState(false);
   const [showFVG, setShowFVG] = useState(true);
   const [showOB, setShowOB] = useState(true);
+  const [keepDraw, setKeepDraw] = useState(false);
+  const [preservedDrawings, setPreservedDrawings] = useState<ChartDrawingSnapshot[]>([]);
+  const previousDrawingRef = useRef<{ key: string; snapshot: ChartDrawingSnapshot } | null>(null);
   const [expanded, setExpanded] = useState(false);
   const [poiLabels, setPoiLabels] = useState<ChartPoiLabel[]>([]);
   const [poiLabelRevision, setPoiLabelRevision] = useState(0);
@@ -270,6 +304,38 @@ export function ChartPanel({
   } | null>(null);
 
   candlesDataRef.current = candlesData;
+
+  useEffect(() => {
+    const snapshot: ChartDrawingSnapshot = {
+      marketState: marketState ?? null,
+      additionalMarketState: additionalMarketState ?? null,
+      tradeOverlay: tradeOverlay ?? null,
+      marketStateTimeframe,
+    };
+    const key = JSON.stringify({ symbol, timeframe, snapshot });
+    const previousDrawing = previousDrawingRef.current;
+    const hasPreviousDrawing = previousDrawing !== null && (
+      previousDrawing.snapshot.marketState !== null
+      || previousDrawing.snapshot.additionalMarketState !== null
+      || previousDrawing.snapshot.tradeOverlay !== null
+    );
+
+    if (keepDraw && previousDrawing && previousDrawing.key !== key && hasPreviousDrawing) {
+      setPreservedDrawings((drawings) => [...drawings, previousDrawing.snapshot]);
+    } else if (!keepDraw) {
+      setPreservedDrawings((drawings) => drawings.length > 0 ? [] : drawings);
+    }
+
+    previousDrawingRef.current = { key, snapshot };
+  }, [
+    additionalMarketState,
+    keepDraw,
+    marketState,
+    marketStateTimeframe,
+    symbol,
+    timeframe,
+    tradeOverlay,
+  ]);
 
   useEffect(() => {
     if (!expanded) return;
@@ -318,7 +384,7 @@ export function ChartPanel({
       lastValueVisible: false,
       crosshairMarkerVisible: false,
     });
-    stopLossRef.current = chart.addSeries(LineSeries, {
+    const stopLoss = chart.addSeries(LineSeries, {
       color: '#ef626c',
       lineStyle: LineStyle.Dashed,
       lineWidth: 1,
@@ -326,8 +392,9 @@ export function ChartPanel({
       lastValueVisible: false,
       crosshairMarkerVisible: false,
     });
+    stopLossSeriesRef.current = [stopLoss];
     marketStructureRef.current = marketStructure;
-    additionalMarketStructureRef.current = chart.addSeries(LineSeries, {
+    const additionalMarketStructure = chart.addSeries(LineSeries, {
       color: '#ef626c',
       lineStyle: LineStyle.Dashed,
       lineWidth: 1,
@@ -335,6 +402,11 @@ export function ChartPanel({
       lastValueVisible: false,
       crosshairMarkerVisible: false,
     });
+    additionalMarketStructureRef.current = additionalMarketStructure;
+    marketStructureSeriesRef.current = [
+      marketStructure,
+      additionalMarketStructure,
+    ];
     const onChartClick = (param: { time?: Time; point?: { x: number; y: number } }) => {
       if (param.time === undefined || !param.point || !hostRef.current) {
         setSelectedCandle(null);
@@ -384,9 +456,10 @@ export function ChartPanel({
         chart.removeSeries(series);
       }
       poiSeriesRef.current = [];
+      marketStructureSeriesRef.current = [];
+      stopLossSeriesRef.current = [];
       marketStructureRef.current = null;
       additionalMarketStructureRef.current = null;
-      stopLossRef.current = null;
       marketStateRangeRef.current = null;
       chart.unsubscribeClick(onChartClick);
       chart.remove();
@@ -396,41 +469,132 @@ export function ChartPanel({
   }, []);
 
   useEffect(() => {
-    const stopLoss = stopLossRef.current;
-    if (!stopLoss) return;
+    const chart = chartRef.current;
+    const stopLossSeries = stopLossSeriesRef.current;
+    if (!chart || stopLossSeries.length === 0) return;
 
-    const entry = tradeOverlay?.trade.entry;
-    const exit = tradeOverlay?.trade.exit;
-    stopLoss.setData(
-      entry && exit && Number(exit.time) > Number(entry.time)
-        ? [
-          { time: entry.time, value: exit.stopLoss },
-          { time: exit.time, value: exit.stopLoss },
-        ]
-        : [],
-    );
-  }, [tradeOverlay]);
+    const currentDrawing: ChartDrawingSnapshot = {
+      marketState: marketState ?? null,
+      additionalMarketState: additionalMarketState ?? null,
+      tradeOverlay: tradeOverlay ?? null,
+      marketStateTimeframe,
+    };
+    const drawings = keepDraw
+      ? [...preservedDrawings, currentDrawing]
+      : [currentDrawing];
+    const tradeOverlays = drawings.flatMap((drawing) => (
+      drawing.tradeOverlay ? [drawing.tradeOverlay] : []
+    ));
+    tradeOverlays.forEach((overlay, index) => {
+      let series = stopLossSeries[index];
+      if (!series) {
+        series = chart.addSeries(LineSeries, {
+          color: '#ef626c',
+          lineStyle: LineStyle.Dashed,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        stopLossSeries.push(series);
+      }
+
+      const { entry, exit } = overlay.trade;
+      series.setData(
+        Number(exit.time) > Number(entry.time)
+          ? [
+            { time: entry.time, value: exit.stopLoss },
+            { time: exit.time, value: exit.stopLoss },
+          ]
+          : [],
+      );
+    });
+    for (const series of stopLossSeries.slice(tradeOverlays.length)) {
+      series.setData([]);
+    }
+  }, [
+    additionalMarketState,
+    keepDraw,
+    marketState,
+    marketStateTimeframe,
+    preservedDrawings,
+    timeframe,
+    tradeOverlay,
+  ]);
 
   useEffect(() => {
     const chart = chartRef.current;
-    const marketStructure = marketStructureRef.current;
-    const additionalMarketStructure = additionalMarketStructureRef.current;
-    if (!chart || !marketStructure) return;
+    const structureSeries = marketStructureSeriesRef.current;
+    if (!chart || structureSeries.length === 0) return;
 
-    marketStructure.setData([]);
-    additionalMarketStructure?.setData([]);
+    for (const series of structureSeries) {
+      series.setData([]);
+    }
     for (const series of poiSeriesRef.current) {
       chart.removeSeries(series);
     }
     poiSeriesRef.current = [];
 
-    if ((!marketState && !additionalMarketState && !tradeOverlay) || candlesData.length === 0) {
+    const currentDrawing: ChartDrawingSnapshot = {
+      marketState: marketState ?? null,
+      additionalMarketState: additionalMarketState ?? null,
+      tradeOverlay: tradeOverlay ?? null,
+      marketStateTimeframe,
+    };
+    const drawings = keepDraw
+      ? [...preservedDrawings, currentDrawing]
+      : [currentDrawing];
+    if (
+      !drawings.some((drawing) => (
+        drawing.marketState
+        || drawing.additionalMarketState
+        || drawing.tradeOverlay
+      ))
+      || candlesData.length === 0
+    ) {
       return;
     }
 
-    const structure = marketState?.marketStructure ?? tradeOverlay?.htf.marketStructure;
-    const additionalStructure = additionalMarketState?.marketStructure
-      ?? tradeOverlay?.ltf.marketStructure;
+    const structures: MarketStateOverlay['marketStructure'][] = [];
+    for (const drawing of drawings) {
+      const structure = drawing.marketState?.marketStructure
+        ?? drawing.tradeOverlay?.htf.marketStructure;
+      const additionalStructure = drawing.additionalMarketState?.marketStructure
+        ?? drawing.tradeOverlay?.ltf.marketStructure;
+      if (structure) structures.push(structure);
+      if (additionalStructure) structures.push(additionalStructure);
+    }
+    structures.forEach((structure, index) => {
+      let series = structureSeries[index];
+      if (!series) {
+        series = chart.addSeries(LineSeries, {
+          lineStyle: LineStyle.Dashed,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        structureSeries.push(series);
+      }
+      series.applyOptions({
+        color: structure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
+        lineStyle: LineStyle.Dashed,
+      });
+      const labelTime = getMarketStateLabelTime(
+        candlesData,
+        structure.eventPrice.time,
+        structure.time,
+      );
+      series.setData([
+        { time: structure.eventPrice.time, value: structure.eventPrice.price },
+        { time: labelTime, value: structure.eventPrice.price },
+        { time: structure.time, value: structure.eventPrice.price },
+      ]);
+    });
+    for (const series of structureSeries.slice(structures.length)) {
+      series.setData([]);
+    }
+
     const rangeMarketState = focusAdditionalMarketState
       ? additionalMarketState ?? marketState
       : marketState;
@@ -438,66 +602,34 @@ export function ChartPanel({
       ? getMarketStateVisibleRange(rangeMarketState, candlesData, !focusAdditionalMarketState)
       : null;
     if (marketStateVisibleRange) marketStateRangeRef.current = marketStateVisibleRange;
-    if (structure) {
-      const structureColor = structure.bias === 'BEARISH' ? '#ef626c' : '#20b887';
-      marketStructure.applyOptions({ color: structureColor, lineStyle: LineStyle.Dashed });
-      const labelTime = getMarketStateLabelTime(
-        candlesData,
-        structure.eventPrice.time,
-        structure.time,
-      );
-      marketStructure.setData([
-        { time: structure.eventPrice.time, value: structure.eventPrice.price },
-        { time: labelTime, value: structure.eventPrice.price },
-        { time: structure.time, value: structure.eventPrice.price },
-      ]);
-    }
 
-    if (additionalMarketStructure && additionalStructure) {
-      additionalMarketStructure.applyOptions({
-        color: additionalStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
-        lineStyle: LineStyle.Dashed,
-      });
-      const labelTime = getMarketStateLabelTime(
-        candlesData,
-        additionalStructure.eventPrice.time,
-        additionalStructure.time,
-      );
-      additionalMarketStructure.setData([
-        { time: additionalStructure.eventPrice.time, value: additionalStructure.eventPrice.price },
-        { time: labelTime, value: additionalStructure.eventPrice.price },
-        { time: additionalStructure.time, value: additionalStructure.eventPrice.price },
-      ]);
-    }
-
-    const visiblePois = [
-      ...(marketState?.pois ?? []),
-      ...(additionalMarketState?.pois ?? []),
-    ].filter((poi) => (
-      poi.type === 'FVG' ? showFVG : showOB
-    ));
-    for (const poi of visiblePois) {
-      const endTime = getPoiEndTime(poi, candlesData);
-      const color = getPoiFillColor(poi);
-      const lineColor = getPoiLineColor(poi);
-      const series = chart.addSeries(BaselineSeries, {
-        baseValue: { type: 'price', price: poi.low },
-        topLineColor: lineColor,
-        bottomLineColor: lineColor,
-        topFillColor1: color,
-        topFillColor2: color,
-        bottomFillColor1: color,
-        bottomFillColor2: color,
-        lineWidth: 1,
-        priceLineVisible: false,
-        lastValueVisible: false,
-        crosshairMarkerVisible: false,
-      });
-      series.setData([
-        { time: poi.startTime, value: poi.high },
-        { time: endTime, value: poi.high },
-      ]);
-      poiSeriesRef.current.push(series);
+    if (!tradeOverlay) {
+      const visiblePois = drawings
+        .flatMap(getSnapshotPois)
+        .filter(({ poi }) => (poi.type === 'FVG' ? showFVG : showOB));
+      for (const { poi } of visiblePois) {
+        const endTime = getPoiEndTime(poi, candlesData);
+        const color = getPoiFillColor(poi);
+        const lineColor = getPoiLineColor(poi);
+        const series = chart.addSeries(BaselineSeries, {
+          baseValue: { type: 'price', price: poi.low },
+          topLineColor: lineColor,
+          bottomLineColor: lineColor,
+          topFillColor1: color,
+          topFillColor2: color,
+          bottomFillColor1: color,
+          bottomFillColor2: color,
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        });
+        series.setData([
+          { time: poi.startTime, value: poi.high },
+          { time: endTime, value: poi.high },
+        ]);
+        poiSeriesRef.current.push(series);
+      }
     }
 
     if (marketStateVisibleRange && hasInitialDataRef.current) {
@@ -507,7 +639,10 @@ export function ChartPanel({
     additionalMarketState,
     candlesData,
     focusAdditionalMarketState,
+    keepDraw,
     marketState,
+    marketStateTimeframe,
+    preservedDrawings,
     showFVG,
     showOB,
     tradeOverlay,
@@ -546,30 +681,25 @@ export function ChartPanel({
     const chart = chartRef.current;
     if (!chart) return;
 
-    if (!tradeOverlay) {
-      if (!marketState) {
-        for (const series of poiSeriesRef.current) {
-          chart.removeSeries(series);
-        }
-        poiSeriesRef.current = [];
-      }
-      return;
-    }
+    if (!tradeOverlay) return;
 
     for (const series of poiSeriesRef.current) {
       chart.removeSeries(series);
     }
     poiSeriesRef.current = [];
 
-    const htfPois = marketState
-      ? marketState.pois.map((poi) => ({ poi, isHtf: true }))
-      : [{ poi: tradeOverlay.htf.poi, isHtf: true }];
-    const tradePois = [
-      ...htfPois,
-      { poi: tradeOverlay.ltf.poi, isHtf: false },
-    ].flatMap(({ poi, isHtf }) => (
-      poi && (poi.type === 'FVG' ? showFVG : showOB) ? [{ poi, isHtf }] : []
-    ));
+    const currentDrawing: ChartDrawingSnapshot = {
+      marketState: marketState ?? null,
+      additionalMarketState: additionalMarketState ?? null,
+      tradeOverlay,
+      marketStateTimeframe,
+    };
+    const drawings = keepDraw
+      ? [...preservedDrawings, currentDrawing]
+      : [currentDrawing];
+    const tradePois = drawings
+      .flatMap(getSnapshotPois)
+      .filter(({ poi }) => (poi.type === 'FVG' ? showFVG : showOB));
     for (const { poi, isHtf } of tradePois) {
       const endTime = getPoiEndTime(poi, candlesData);
       const color = getPoiFillColor(poi, isHtf ? 0.06 : 0.14);
@@ -595,7 +725,17 @@ export function ChartPanel({
       ]);
       poiSeriesRef.current.push(series);
     }
-  }, [candlesData, marketState, showFVG, showOB, tradeOverlay]);
+  }, [
+    additionalMarketState,
+    candlesData,
+    keepDraw,
+    marketState,
+    marketStateTimeframe,
+    preservedDrawings,
+    showFVG,
+    showOB,
+    tradeOverlay,
+  ]);
 
   useEffect(() => {
     const chart = chartRef.current;
@@ -662,26 +802,37 @@ export function ChartPanel({
   }, [candlesData]);
 
   useEffect(() => {
-    const marketStateMarkers: SeriesMarker<Time>[] = marketState
-      ? [
+    const currentDrawing: ChartDrawingSnapshot = {
+      marketState: marketState ?? null,
+      additionalMarketState: additionalMarketState ?? null,
+      tradeOverlay: tradeOverlay ?? null,
+      marketStateTimeframe,
+    };
+    const drawings = keepDraw
+      ? [...preservedDrawings, currentDrawing]
+      : [currentDrawing];
+    const marketStateMarkers: SeriesMarker<Time>[] = drawings.flatMap((drawing) => {
+      const state = drawing.marketState;
+      if (!state) return [];
+      return [
         {
           time: getMarketStateLabelTime(
             candlesData,
-            marketState.marketStructure.eventPrice.time,
-            marketState.marketStructure.time,
+            state.marketStructure.eventPrice.time,
+            state.marketStructure.time,
           ),
-          position: marketState.marketStructure.bias === 'BEARISH'
+          position: state.marketStructure.bias === 'BEARISH'
             ? 'atPriceBottom' as const
             : 'atPriceTop' as const,
-          price: marketState.marketStructure.eventPrice.price,
+          price: state.marketStructure.eventPrice.price,
           shape: 'circle' as const,
-          color: marketState.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
-          text: `${marketStateTimeframe === 'htf'
-            ? marketState.marketStructure.event.toUpperCase()
-            : marketState.marketStructure.event.toLowerCase()}: ${marketState.marketStructure.score.toFixed(2)}`,
+          color: state.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
+          text: `${drawing.marketStateTimeframe === 'htf'
+            ? state.marketStructure.event.toUpperCase()
+            : state.marketStructure.event.toLowerCase()}: ${state.marketStructure.score.toFixed(2)}`,
           size: 0,
         },
-        ...marketState.pois
+        ...state.pois
           .filter((poi) => (poi.type === 'FVG' ? showFVG : showOB))
           .map((poi) => ({
             time: getMarketStateLabelTime(candlesData, poi.startTime, getPoiEndTime(poi, candlesData)),
@@ -689,31 +840,33 @@ export function ChartPanel({
             price: poi.high,
             shape: 'circle' as const,
             color: getPoiLineColor(poi),
-            text: `${marketStateTimeframe === 'htf'
+            text: `${drawing.marketStateTimeframe === 'htf'
               ? poi.type === 'FVG' ? 'FVG' : 'OB'
               : poi.type === 'FVG' ? 'fvg' : 'ob'}: ${poi.score.toFixed(1)}`,
             size: 0,
           })),
-      ]
-      : [];
-    const additionalMarketStateMarkers: SeriesMarker<Time>[] = additionalMarketState
-      ? [
+      ];
+    });
+    const additionalMarketStateMarkers: SeriesMarker<Time>[] = drawings.flatMap((drawing) => {
+      const state = drawing.additionalMarketState;
+      if (!state) return [];
+      return [
         {
           time: getMarketStateLabelTime(
             candlesData,
-            additionalMarketState.marketStructure.eventPrice.time,
-            additionalMarketState.marketStructure.time,
+            state.marketStructure.eventPrice.time,
+            state.marketStructure.time,
           ),
-          position: additionalMarketState.marketStructure.bias === 'BEARISH'
+          position: state.marketStructure.bias === 'BEARISH'
             ? 'atPriceBottom' as const
             : 'atPriceTop' as const,
-          price: additionalMarketState.marketStructure.eventPrice.price,
+          price: state.marketStructure.eventPrice.price,
           shape: 'circle' as const,
-          color: additionalMarketState.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
-          text: `${additionalMarketState.marketStructure.event.toLowerCase()}: ${additionalMarketState.marketStructure.score.toFixed(2)}`,
+          color: state.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
+          text: `${state.marketStructure.event.toLowerCase()}: ${state.marketStructure.score.toFixed(2)}`,
           size: 0,
         },
-        ...additionalMarketState.pois
+        ...state.pois
           .filter((poi) => (poi.type === 'FVG' ? showFVG : showOB))
           .map((poi) => ({
             time: getMarketStateLabelTime(candlesData, poi.startTime, getPoiEndTime(poi, candlesData)),
@@ -724,92 +877,94 @@ export function ChartPanel({
             text: `${poi.type === 'FVG' ? 'fvg' : 'ob'}: ${poi.score.toFixed(1)}`,
             size: 0,
           })),
-      ]
-      : [];
-    const tradeStructureMarkers: SeriesMarker<Time>[] = tradeOverlay
-      ? [
-        ...(!marketState ? [{
+      ];
+    });
+    const tradeStructureMarkers: SeriesMarker<Time>[] = drawings.flatMap((drawing) => {
+      const overlay = drawing.tradeOverlay;
+      if (!overlay) return [];
+      return [
+        ...(!drawing.marketState ? [{
           time: getMarketStateLabelTime(
             candlesData,
-            tradeOverlay.htf.marketStructure.eventPrice.time,
-            tradeOverlay.htf.marketStructure.time,
+            overlay.htf.marketStructure.eventPrice.time,
+            overlay.htf.marketStructure.time,
           ),
-          position: tradeOverlay.htf.marketStructure.bias === 'BEARISH'
+          position: overlay.htf.marketStructure.bias === 'BEARISH'
             ? 'atPriceBottom' as const
             : 'atPriceTop' as const,
-          price: tradeOverlay.htf.marketStructure.eventPrice.price,
+          price: overlay.htf.marketStructure.eventPrice.price,
           shape: 'square' as const,
-          color: tradeOverlay.htf.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
-          text: `${tradeOverlay.htf.marketStructure.event.toUpperCase()}: ${tradeOverlay.htf.marketStructure.score.toFixed(2)}`,
+          color: overlay.htf.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
+          text: `${overlay.htf.marketStructure.event.toUpperCase()}: ${overlay.htf.marketStructure.score.toFixed(2)}`,
           size: 1,
         }] : []),
         {
           time: getMarketStateLabelTime(
             candlesData,
-            tradeOverlay.ltf.marketStructure.eventPrice.time,
-            tradeOverlay.ltf.marketStructure.time,
+            overlay.ltf.marketStructure.eventPrice.time,
+            overlay.ltf.marketStructure.time,
           ),
-          position: tradeOverlay.ltf.marketStructure.bias === 'BEARISH'
+          position: overlay.ltf.marketStructure.bias === 'BEARISH'
             ? 'atPriceBottom' as const
             : 'atPriceTop' as const,
-          price: tradeOverlay.ltf.marketStructure.eventPrice.price,
+          price: overlay.ltf.marketStructure.eventPrice.price,
           shape: 'circle',
-          color: tradeOverlay.ltf.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
-          text: `${tradeOverlay.ltf.marketStructure.event.toLowerCase()}: ${tradeOverlay.ltf.marketStructure.score.toFixed(2)}`,
+          color: overlay.ltf.marketStructure.bias === 'BEARISH' ? '#ef626c' : '#20b887',
+          text: `${overlay.ltf.marketStructure.event.toLowerCase()}: ${overlay.ltf.marketStructure.score.toFixed(2)}`,
           size: 1,
         },
         {
-          time: tradeOverlay.trade.entry.time,
+          time: overlay.trade.entry.time,
           position: 'atPriceMiddle',
-          price: tradeOverlay.trade.entry.price,
+          price: overlay.trade.entry.price,
           shape: 'circle',
           color: '#60a5fa',
           text: 'Entry',
           size: 1,
         },
         {
-          time: tradeOverlay.trade.exit.time,
+          time: overlay.trade.exit.time,
           position: 'atPriceMiddle',
-          price: tradeOverlay.trade.exit.type === 'TP'
-            ? tradeOverlay.trade.exit.price
-            : tradeOverlay.trade.exit.stopLoss,
+          price: overlay.trade.exit.type === 'TP'
+            ? overlay.trade.exit.price
+            : overlay.trade.exit.stopLoss,
           shape: 'circle',
-          color: tradeOverlay.trade.exit.type === 'TP' ? '#20b887' : '#ef626c',
-          text: tradeOverlay.trade.exit.type,
+          color: overlay.trade.exit.type === 'TP' ? '#20b887' : '#ef626c',
+          text: overlay.trade.exit.type,
           size: 1,
         },
         {
           time: getMarketStateLabelTime(
             candlesData,
-            tradeOverlay.trade.entry.time,
-            tradeOverlay.trade.exit.time,
+            overlay.trade.entry.time,
+            overlay.trade.exit.time,
           ),
           position: 'atPriceMiddle',
-          price: tradeOverlay.trade.exit.stopLoss,
+          price: overlay.trade.exit.stopLoss,
           shape: 'circle',
           color: '#ef626c',
           text: SYSTEM_CONFIG.ui.backtestReplay.stopLossLabel,
           size: 0,
         },
-        ...(tradeOverlay.ltf.sweep
+        ...(overlay.ltf.sweep
           ? [{
-            time: tradeOverlay.ltf.sweep.time,
-            position: tradeOverlay.ltf.sweep.direction === 'BEARISH'
+            time: overlay.ltf.sweep.time,
+            position: overlay.ltf.sweep.direction === 'BEARISH'
               ? 'aboveBar' as const
               : 'belowBar' as const,
-            shape: tradeOverlay.ltf.sweep.direction === 'BEARISH'
+            shape: overlay.ltf.sweep.direction === 'BEARISH'
               ? 'arrowDown' as const
               : 'arrowUp' as const,
-            color: tradeOverlay.ltf.sweep.direction === 'BEARISH' ? '#ef626c' : '#20b887',
-            text: typeof tradeOverlay.ltf.sweep.score === 'number'
-              ? `sweep: ${tradeOverlay.ltf.sweep.score.toFixed(2)}`
+            color: overlay.ltf.sweep.direction === 'BEARISH' ? '#ef626c' : '#20b887',
+            text: typeof overlay.ltf.sweep.score === 'number'
+              ? `sweep: ${overlay.ltf.sweep.score.toFixed(2)}`
               : 'sweep',
             size: 1,
           }]
           : []),
         ...[
-          { poi: tradeOverlay.htf.poi, shape: 'square' as const, isHtf: true },
-          { poi: tradeOverlay.ltf.poi, shape: 'circle' as const, isHtf: false },
+          { poi: overlay.htf.poi, shape: 'square' as const, isHtf: true },
+          { poi: overlay.ltf.poi, shape: 'circle' as const, isHtf: false },
         ].flatMap(({ poi, shape, isHtf }) => {
           if (!poi || (poi.type === 'FVG' ? !showFVG : !showOB)) return [];
 
@@ -824,8 +979,8 @@ export function ChartPanel({
             size: isHtf ? 1.5 : 1,
           }];
         }),
-      ]
-      : [];
+      ];
+    });
     const allMarkers = [
       ...(showSwings ? markers ?? [] : []),
       ...marketStateMarkers,
@@ -837,9 +992,11 @@ export function ChartPanel({
   }, [
     additionalMarketState,
     candlesData,
+    keepDraw,
     markers,
     marketState,
     marketStateTimeframe,
+    preservedDrawings,
     showFVG,
     showOB,
     showSwings,
@@ -859,6 +1016,8 @@ export function ChartPanel({
       onShowFVGChange={setShowFVG}
       showOB={showOB}
       onShowOBChange={setShowOB}
+      keepDraw={keepDraw}
+      onKeepDrawChange={setKeepDraw}
       expanded={expanded}
       onToggleExpanded={() => setExpanded((isExpanded) => !isExpanded)}
       statusLabel={statusLabel}

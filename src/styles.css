@@ -215,6 +215,7 @@ button { cursor: pointer; }
 .chart-toolbar { height: 32px; flex: 0 0 32px; display: flex; align-items: center; gap: 11px; padding: 0 10px; border-bottom: 1px solid #1c2b3f; }
 .mini-toggle { display: flex; align-items: center; gap: 4px; color: #91a2b8; font-size: 9px; white-space: nowrap; }
 .mini-toggle input { width: 11px; height: 11px; margin: 0; accent-color: #64a4ff; }
+.chart-toolbar__separator { width: 1px; height: 14px; flex: 0 0 1px; background: #2b3b50; }
 .chart-status { display: flex; align-items: center; gap: 4px; color: #647991; font-size: 9px; white-space: nowrap; }
 .chart-canvas-wrap { flex: 1; min-height: 0; position: relative; }
 .chart-canvas { position: absolute; inset: 0; }

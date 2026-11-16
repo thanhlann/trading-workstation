@@ -16,6 +16,8 @@ export function ChartPanelView({
   onShowFVGChange,
   showOB,
   onShowOBChange,
+  keepDraw,
+  onKeepDrawChange,
   expanded,
   onToggleExpanded,
   statusLabel,
@@ -84,6 +86,8 @@ export function ChartPanelView({
             <label className="mini-toggle"><input type="checkbox" checked={showSwings} onChange={(event) => onShowSwingsChange(event.target.checked)} /> {SYSTEM_CONFIG.ui.chart.swings}</label>
             <label className="mini-toggle"><input type="checkbox" checked={showFVG} onChange={(event) => onShowFVGChange(event.target.checked)} /> {SYSTEM_CONFIG.ui.chart.fvg}</label>
             <label className="mini-toggle"><input type="checkbox" checked={showOB} onChange={(event) => onShowOBChange(event.target.checked)} /> {SYSTEM_CONFIG.ui.chart.ob}</label>
+            <span className="chart-toolbar__separator" role="separator" aria-orientation="vertical" />
+            <label className="mini-toggle"><input type="checkbox" checked={keepDraw} onChange={(event) => onKeepDrawChange(event.target.checked)} /> {SYSTEM_CONFIG.ui.chart.keepDraw}</label>
             <span className="toolbar-spacer" />
             <span className="chart-status"><Activity size={12} /> {statusLabel}</span>
             <span className="sr-only">{panelId}-{showSwings}-{showFVG}-{showOB}</span>

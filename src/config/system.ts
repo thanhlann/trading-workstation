@@ -53,6 +53,7 @@ export const SYSTEM_CONFIG = {
       swings: "Swing",
       fvg: "FVG",
       ob: "OB",
+      keepDraw: "Keep draw",
       demoData: "Demo data",
       watermark: "TRADING WORKSTATION",
       restoreTitle: "Restore chart",
